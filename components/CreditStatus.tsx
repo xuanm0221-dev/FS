@@ -16,6 +16,7 @@ export default function CreditStatus({ data }: CreditStatusProps) {
     '여신회수: 11월 390m(회수 실적 388m), 12월 258m, 1월 62m, 2월 179m, 3월 81m'
   );
   const [editingRecovery, setEditingRecovery] = useState<boolean>(false);
+  const [othersCollapsed, setOthersCollapsed] = useState<boolean>(true);
 
   return (
     <div className="space-y-6">
@@ -53,7 +54,7 @@ export default function CreditStatus({ data }: CreditStatusProps) {
         <div className="bg-orange-100 border border-orange-300 rounded-lg p-6">
           <div className="flex items-center gap-2 mb-4">
             <span className="text-2xl">⚠️</span>
-            <h3 className="text-lg font-semibold text-orange-900">리스크 분석</h3>
+            <h3 className="text-lg font-semibold text-orange-900">리스크 분석(순여신 잔액 기준)</h3>
           </div>
           <div className="space-y-3">
             <div className="flex justify-between items-center">
@@ -106,9 +107,9 @@ export default function CreditStatus({ data }: CreditStatusProps) {
             </tr>
           </thead>
           <tbody>
-            {/* 1. 합계 행 (맨 위, 노란색) */}
-            <tr className="bg-yellow-100 font-bold">
-              <td className="border border-gray-300 py-3 px-4 text-center sticky left-0 z-10 bg-yellow-100">
+            {/* 1. 합계 행 (맨 위, 연한 하늘색) */}
+            <tr className="bg-sky-100 font-bold">
+              <td className="border border-gray-300 py-3 px-4 text-center sticky left-0 z-10 bg-sky-100">
                 ▼ 합계
               </td>
               <td className="border border-gray-300 py-3 px-4"></td>
@@ -208,23 +209,54 @@ export default function CreditStatus({ data }: CreditStatusProps) {
               );
             })}
 
-            {/* 4. 기타 행 (접기/펼치기 가능) */}
+            {/* 4. 기타 행 (토글 가능) */}
             {!collapsed && (
-              <tr className="bg-gray-100">
-                <td className="border border-gray-300 py-2 px-4 text-center sticky left-0 z-10 bg-gray-100"></td>
-                <td className="border border-gray-300 py-2 px-4 font-semibold">
-                  기타 {data.others.count}개
-                </td>
-                <td className="border border-gray-300 py-2 px-4 text-right">
-                  {formatNumber(data.others.외상매출금)}
-                </td>
-                <td className="border border-gray-300 py-2 px-4 text-right">
-                  {formatNumber(data.others.선수금)}
-                </td>
-                <td className="border border-gray-300 py-2 px-4 text-right font-semibold">
-                  {formatNumber(data.others.순여신)}
-                </td>
-              </tr>
+              <>
+                {/* 기타 합계 행 */}
+                <tr className="bg-gray-100">
+                  <td className="border border-gray-300 py-2 px-4 text-center sticky left-0 z-10 bg-gray-100">
+                    <button
+                      onClick={() => setOthersCollapsed(!othersCollapsed)}
+                      className="text-gray-700 hover:text-gray-900 transition-colors"
+                    >
+                      {othersCollapsed ? '▶' : '▼'}
+                    </button>
+                  </td>
+                  <td className="border border-gray-300 py-2 px-4 font-semibold">
+                    기타 {data.others.count}개
+                  </td>
+                  <td className="border border-gray-300 py-2 px-4 text-right">
+                    {formatNumber(data.others.외상매출금)}
+                  </td>
+                  <td className="border border-gray-300 py-2 px-4 text-right">
+                    {formatNumber(data.others.선수금)}
+                  </td>
+                  <td className="border border-gray-300 py-2 px-4 text-right font-semibold">
+                    {formatNumber(data.others.순여신)}
+                  </td>
+                </tr>
+
+                {/* 기타 개별 대리상 (펼쳤을 때만) */}
+                {!othersCollapsed && data.othersList && data.othersList.map((dealer, index) => (
+                  <tr key={`other-${index}`} className="bg-gray-50 hover:bg-gray-100">
+                    <td className="border border-gray-300 py-2 px-4 text-center sticky left-0 z-10 bg-gray-50 text-sm text-gray-600">
+                      {17 + index + 1}
+                    </td>
+                    <td className="border border-gray-300 py-2 px-4 pl-8 text-sm text-gray-700">
+                      {dealer.name}
+                    </td>
+                    <td className="border border-gray-300 py-2 px-4 text-right text-sm">
+                      {formatNumber(dealer.외상매출금)}
+                    </td>
+                    <td className="border border-gray-300 py-2 px-4 text-right text-sm">
+                      {formatNumber(dealer.선수금)}
+                    </td>
+                    <td className="border border-gray-300 py-2 px-4 text-right text-sm">
+                      {formatNumber(dealer.순여신)}
+                    </td>
+                  </tr>
+                ))}
+              </>
             )}
           </tbody>
         </table>

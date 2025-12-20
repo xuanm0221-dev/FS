@@ -63,6 +63,7 @@ export interface CreditData {
     선수금: number;
     순여신: number;
   };
+  othersList: CreditDealer[];
   analysis: {
     top17Ratio: number; // 상위 17개 비율
     top1Ratio: number; // 최대 거래처 비율

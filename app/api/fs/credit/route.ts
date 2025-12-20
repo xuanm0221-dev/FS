@@ -24,8 +24,8 @@ export async function GET() {
         순여신: d.외상매출금 - d.선수금,
       }));
 
-    // 순여신 기준 내림차순 정렬
-    dealerList.sort((a, b) => b.순여신 - a.순여신);
+    // 외상매출금 기준 내림차순 정렬
+    dealerList.sort((a, b) => b.외상매출금 - a.외상매출금);
 
     // 상위 17개
     const top17 = dealerList.slice(0, 17);
@@ -58,6 +58,7 @@ export async function GET() {
       dealers: dealerList,
       top17,
       others: othersSum,
+      othersList: others,
       analysis: {
         top17Ratio,
         top1Ratio,

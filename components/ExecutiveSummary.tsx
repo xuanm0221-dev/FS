@@ -1,5 +1,5 @@
 'use client';
-import { useState, useRef, useEffect } from 'react';
+import { useEffect } from 'react';
 import { ExecutiveSummaryData } from '@/lib/types';
 
 interface ExecutiveSummaryProps {
@@ -9,8 +9,6 @@ interface ExecutiveSummaryProps {
 }
 
 export default function ExecutiveSummary({ data, onChange, onReset }: ExecutiveSummaryProps) {
-  const fileInputRef = useRef<HTMLInputElement>(null);
-
   // data가 변경될 때마다 localStorage에 자동 저장
   useEffect(() => {
     if (data) {
@@ -61,37 +59,14 @@ export default function ExecutiveSummary({ data, onChange, onReset }: ExecutiveS
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `경영요약_${new Date().toISOString().split('T')[0]}.json`;
+      a.download = `executive-summary.json`;
       a.click();
       URL.revokeObjectURL(url);
       
-      alert('저장되었습니다! (브라우저 저장소 + JSON 파일 백업)');
+      alert('저장되었습니다!\n\n📌 팁: 다운로드된 executive-summary.json 파일을\n프로젝트의 /public/data/ 폴더에 복사하고\nGitHub에 푸시하면 팀 전체가 최신 버전을 사용할 수 있습니다.');
     } catch (err) {
       console.error('저장 실패:', err);
       alert('저장에 실패했습니다.');
-    }
-  };
-
-  // JSON 업로드
-  const handleUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      try {
-        const uploadedData = JSON.parse(event.target?.result as string);
-        onChange(uploadedData);
-        alert('경영요약 데이터를 불러왔습니다.');
-      } catch (err) {
-        alert('JSON 파일 형식이 올바르지 않습니다.');
-      }
-    };
-    reader.readAsText(file);
-    
-    // 파일 입력 초기화
-    if (fileInputRef.current) {
-      fileInputRef.current.value = '';
     }
   };
 
@@ -106,19 +81,6 @@ export default function ExecutiveSummary({ data, onChange, onReset }: ExecutiveS
             className="px-4 py-2 text-sm font-medium rounded-lg bg-blue-600 text-white hover:bg-blue-700 transition-colors shadow-sm"
           >
             💾 저장하기
-          </button>
-          <input
-            type="file"
-            ref={fileInputRef}
-            onChange={handleUpload}
-            accept=".json"
-            className="hidden"
-          />
-          <button
-            onClick={() => fileInputRef.current?.click()}
-            className="px-4 py-2 text-sm font-medium rounded-lg bg-green-600 text-white hover:bg-green-700 transition-colors shadow-sm"
-          >
-            📁 JSON 불러오기
           </button>
           <button
             onClick={onReset}

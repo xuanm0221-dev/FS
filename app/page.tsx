@@ -107,28 +107,41 @@ export default function Home() {
     try {
       setLoading(true);
       
-      // 먼저 localStorage에서 확인
+      // 1순위: localStorage에서 확인 (개인 수정본)
       const savedData = localStorage.getItem('executive-summary');
       if (savedData) {
         try {
           const parsed = JSON.parse(savedData);
           setSummaryData(parsed);
           setLoading(false);
-          return; // localStorage에 데이터가 있으면 API 호출 안함
+          return;
         } catch (parseErr) {
           console.error('localStorage 파싱 실패:', parseErr);
-          // 파싱 실패하면 API에서 불러오기
         }
       }
       
-      // localStorage에 없으면 API에서 불러오기
+      // 2순위: 프로젝트 기본 파일에서 불러오기
+      try {
+        const fileResponse = await fetch('/data/executive-summary.json');
+        if (fileResponse.ok) {
+          const fileData = await fileResponse.json();
+          setSummaryData(fileData);
+          // localStorage에도 저장 (다음부터는 여기서 로드)
+          localStorage.setItem('executive-summary', JSON.stringify(fileData));
+          setLoading(false);
+          return;
+        }
+      } catch (fileErr) {
+        console.log('프로젝트 기본 파일 없음, API에서 생성합니다.');
+      }
+      
+      // 3순위: API에서 생성 (최초 1회)
       const response = await fetch('/api/fs/summary');
       if (!response.ok) {
         throw new Error('경영요약 데이터를 불러올 수 없습니다.');
       }
       const result = await response.json();
       setSummaryData(result);
-      // 첫 로드 시 localStorage에도 저장
       localStorage.setItem('executive-summary', JSON.stringify(result));
     } catch (err) {
       console.error(err);

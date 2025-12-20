@@ -160,13 +160,14 @@ export default function FinancialTable({
     const accountCol = [columns[0]]; // "계정과목"
     
     if (isCashFlow) {
-      // 현금흐름표: 계정과목 | 2024년 | 1월~12월 | 2025년(합계)
+      // 현금흐름표: 계정과목 | 2024년 | 1월~12월 | 2025년(합계) | YoY
       if (monthsCollapsed) {
         return [
           ...accountCol,
           '2024년',
           '', // 빈 컬럼
           '2025년(합계)',
+          'YoY',
         ];
       } else {
         const monthCols = columns.slice(1, 13); // 1월~12월
@@ -175,6 +176,7 @@ export default function FinancialTable({
           '2024년',
           ...monthCols,
           '2025년(합계)',
+          'YoY',
         ];
       }
     } else if (showComparisons) {
@@ -418,16 +420,29 @@ export default function FinancialTable({
 
                 {/* CF: 합계 컬럼 (2025년) */}
                 {isCashFlow && (
-                  <td
-                    className={`
-                      border border-gray-300 px-4 py-2 text-right
-                      ${getHighlightClass(row.isHighlight)}
-                      ${row.isBold ? 'font-semibold' : ''}
-                      ${isNegative(row.values[12]) ? 'text-red-600' : ''}
-                    `}
-                  >
-                    {formatValue(row.values[12], row.format, false, !row.isCalculated)}
-                  </td>
+                  <>
+                    <td
+                      className={`
+                        border border-gray-300 px-4 py-2 text-right
+                        ${getHighlightClass(row.isHighlight)}
+                        ${row.isBold ? 'font-semibold' : ''}
+                        ${isNegative(row.values[12]) ? 'text-red-600' : ''}
+                      `}
+                    >
+                      {formatValue(row.values[12], row.format, false, !row.isCalculated)}
+                    </td>
+                    {/* CF: YoY 컬럼 (25년 - 24년) */}
+                    <td
+                      className={`
+                        border border-gray-300 px-4 py-2 text-right
+                        ${getHighlightClass(row.isHighlight)}
+                        ${row.isBold ? 'font-semibold' : ''}
+                        ${isNegative(row.values[13]) ? 'text-red-600' : ''}
+                      `}
+                    >
+                      {formatValue(row.values[13], row.format, true, false)}
+                    </td>
+                  </>
                 )}
 
                 {/* 빈 컬럼들 및 비교 컬럼 (PL 2025년 또는 BS 2025/2026, 항상 표시) */}

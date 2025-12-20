@@ -11,26 +11,22 @@ function generateWCRemarks(
   currentYear: number
 ): { [key: string]: string } {
   
-  // 비교 월 결정
-  const currentMonth = currentYear === 2026 ? 5 : 11; // 6월(index 5) 또는 12월(index 11)
-  const previousMonth = 11; // 항상 전년 12월
-  
-  // 계정 값 가져오기
-  const getValue = (data: TableRow[], account: string, month: number) => {
+  // YoY 값 가져오기 (이미 계산된 값)
+  const getYoYValue = (data: TableRow[], account: string) => {
     const row = data.find(r => r.account === account);
-    return row?.values[month] || 0;
+    // annualYoY: 24년기말 vs 25년기말 (또는 25년기말 vs 26년6월)
+    return row?.comparisons?.annualYoY || 0;
   };
   
-  // 변동 계산 및 포맷팅
-  const formatChange = (label: string, current: number, previous: number) => {
-    const diff = current - previous; // 이미 K 단위
-    const diffM = Math.round(diff / 1000); // M 단위로 변환 (÷1000 추가)
+  // 변동 포맷팅 (YoY 값은 이미 차이가 계산되어 있음)
+  const formatChange = (label: string, yoyValue: number) => {
+    const diffM = Math.round(yoyValue / 1000); // K → M 단위로 변환
     
     if (Math.abs(diffM) < 1) return null; // 1M 미만은 무시
     
     const sign = diffM > 0 ? '+' : '△';
     const absValue = Math.abs(diffM);
-    return `${label} ${sign}${absValue}M`; // m → M (대문자)
+    return `${label} ${sign}${absValue}M`;
   };
   
   const remarks: { [key: string]: string } = {};
@@ -40,39 +36,29 @@ function generateWCRemarks(
   const wcChanges: string[] = [];
   
   // AR = 직영AR + 대리상AR 통합
-  const 직영ARCurr = getValue(currentBSData, '직영AR', currentMonth);
-  const 대리상ARCurr = getValue(currentBSData, '대리상AR', currentMonth);
-  const ARCurr = 직영ARCurr + 대리상ARCurr;
+  const 직영ARYoY = getYoYValue(currentBSData, '직영AR');
+  const 대리상ARYoY = getYoYValue(currentBSData, '대리상AR');
+  const ARYoY = 직영ARYoY + 대리상ARYoY;
   
-  const 직영ARPrev = getValue(previousBSData, '직영AR', previousMonth);
-  const 대리상ARPrev = getValue(previousBSData, '대리상AR', previousMonth);
-  const ARPrev = 직영ARPrev + 대리상ARPrev;
-  
-  const ARChange = formatChange('AR', ARCurr, ARPrev);
+  const ARChange = formatChange('AR', ARYoY);
   if (ARChange) wcChanges.push(ARChange);
   
   // 재고자산
-  const 재고Curr = getValue(currentBSData, '재고자산', currentMonth);
-  const 재고Prev = getValue(previousBSData, '재고자산', previousMonth);
-  const 재고Change = formatChange('재고', 재고Curr, 재고Prev);
+  const 재고YoY = getYoYValue(currentBSData, '재고자산');
+  const 재고Change = formatChange('재고자산', 재고YoY);
   if (재고Change) wcChanges.push(재고Change);
   
   // 본사선급금
-  const 선급금Curr = getValue(currentBSData, '선급금(본사)', currentMonth);
-  const 선급금Prev = getValue(previousBSData, '선급금(본사)', previousMonth);
-  const 선급금Change = formatChange('선급금', 선급금Curr, 선급금Prev);
+  const 선급금YoY = getYoYValue(currentBSData, '선급금(본사)');
+  const 선급금Change = formatChange('선급금', 선급금YoY);
   if (선급금Change) wcChanges.push(선급금Change);
   
   // AP = 본사 AP + 제품 AP 통합
-  const 본사APCurr = getValue(currentBSData, '본사 AP', currentMonth);
-  const 제품APCurr = getValue(currentBSData, '제품 AP', currentMonth);
-  const APCurr = 본사APCurr + 제품APCurr;
+  const 본사APYoY = getYoYValue(currentBSData, '본사 AP');
+  const 제품APYoY = getYoYValue(currentBSData, '제품 AP');
+  const APYoY = 본사APYoY + 제품APYoY;
   
-  const 본사APPrev = getValue(previousBSData, '본사 AP', previousMonth);
-  const 제품APPrev = getValue(previousBSData, '제품 AP', previousMonth);
-  const APPrev = 본사APPrev + 제품APPrev;
-  
-  const APChange = formatChange('AP', APCurr, APPrev);
+  const APChange = formatChange('AP', APYoY);
   if (APChange) wcChanges.push(APChange);
   
   if (wcChanges.length > 0) {
@@ -85,9 +71,8 @@ function generateWCRemarks(
     { key: '대리상선수금', label: '선수금' },
     { key: '대리상지원금', label: '지원금' }
   ].forEach(({ key, label }) => {
-    const curr = getValue(currentBSData, key, currentMonth);
-    const prev = getValue(previousBSData, key, previousMonth);
-    const change = formatChange(label, curr, prev);
+    const yoy = getYoYValue(currentBSData, key);
+    const change = formatChange(label, yoy);
     if (change) fromDealerChanges.push(change);
   });
   
@@ -101,9 +86,8 @@ function generateWCRemarks(
     { key: '현금 및 현금성자산', label: '현금' },
     { key: '차입금', label: '차입금' }
   ].forEach(({ key, label }) => {
-    const curr = getValue(currentBSData, key, currentMonth);
-    const prev = getValue(previousBSData, key, previousMonth);
-    const change = formatChange(label, curr, prev);
+    const yoy = getYoYValue(currentBSData, key);
+    const change = formatChange(label, yoy);
     if (change) fromCashChanges.push(change);
   });
   
@@ -112,9 +96,8 @@ function generateWCRemarks(
   }
   
   // 4. from 이익창출
-  const 이익잉여금Curr = getValue(currentBSData, '이익잉여금', currentMonth);
-  const 이익잉여금Prev = getValue(previousBSData, '이익잉여금', previousMonth);
-  const 이익잉여금Change = formatChange('이연잉여금', 이익잉여금Curr, 이익잉여금Prev);
+  const 이익잉여금YoY = getYoYValue(currentBSData, '이익잉여금');
+  const 이익잉여금Change = formatChange('이익잉여금', 이익잉여금YoY);
   if (이익잉여금Change) {
     remarks['from 이익창출'] = 이익잉여금Change;
   }
@@ -129,9 +112,8 @@ function generateWCRemarks(
     { key: '기타 유동자산', label: '미수금' },
     { key: '기타 유동부채', label: '미지급금' }
   ].forEach(({ key, label }) => {
-    const curr = getValue(currentBSData, key, currentMonth);
-    const prev = getValue(previousBSData, key, previousMonth);
-    const change = formatChange(label, curr, prev);
+    const yoy = getYoYValue(currentBSData, key);
+    const change = formatChange(label, yoy);
     if (change) otherChanges.push(change);
   });
   
@@ -145,9 +127,8 @@ function generateWCRemarks(
     { key: '사용권자산', label: '사용권자산' },
     { key: '리스부채(장,단기)', label: '리스부채' }
   ].forEach(({ key, label }) => {
-    const curr = getValue(currentBSData, key, currentMonth);
-    const prev = getValue(previousBSData, key, previousMonth);
-    const change = formatChange(label, curr, prev);
+    const yoy = getYoYValue(currentBSData, key);
+    const change = formatChange(label, yoy);
     if (change) leaseChanges.push(change);
   });
   

@@ -69,6 +69,18 @@ export default function BSAnalysis({ bsData, year, previousYearData }: BSAnalysi
     }));
   };
   
+  // 천단위 콤마 포맷팅
+  const formatWithCommas = (value: number): string => {
+    return value.toLocaleString('ko-KR');
+  };
+  
+  // 콤마 제거 및 숫자 파싱
+  const parseNumber = (value: string): number => {
+    const cleaned = value.replace(/,/g, '');
+    const num = Number(cleaned);
+    return isNaN(num) ? 0 : num;
+  };
+  
   return (
     <div className="px-6 pb-6">
       {/* 제목 */}
@@ -139,19 +151,21 @@ export default function BSAnalysis({ bsData, year, previousYearData }: BSAnalysi
         </div>
       </div>
       
-      {/* 해석 박스 */}
-      <div className="bg-blue-50 border-l-4 border-blue-500 p-4 mb-6 rounded">
-        <h3 className="font-semibold text-blue-900 mb-2">💡 해석:</h3>
-        <ul className="text-sm text-blue-800 space-y-1">
-          <li>• 부채비율 {부채비율.toFixed(0)}%: 25년말 {전년부채비율.toFixed(0)}% 대비 {Math.abs(부채비율 - 전년부채비율).toFixed(0)}%p 개선, 재무 안정성 크게 향상</li>
-          <li>• 유동비율 {유동비율.toFixed(0)}%: 단기 채무상환 능력 양호</li>
-          <li>• ROE {ROE.toFixed(1)}%: {year === 2026 ? '상반기' : '통년'} 순이익 {당기순이익.toFixed(0)}M, 안정적 수익성 유지</li>
-          <li>• 차입금비율 {차입금비율.toFixed(0)}%: 25년말 {전년차입금비율.toFixed(0)}% 대비 {Math.abs(차입금비율 - 전년차입금비율).toFixed(0)}%p 개선, 재무 레버리지 최적화</li>
-        </ul>
-      </div>
-      
-      {/* 차입가능한도 테이블 */}
-      <div className="bg-white rounded-lg border border-gray-300 overflow-hidden shadow-sm">
+      {/* 해석 + 차입가능한도 2열 레이아웃 */}
+      <div className="grid grid-cols-2 gap-4">
+        {/* 좌측: 해석 박스 */}
+        <div className="bg-blue-50 border-l-4 border-blue-500 p-4 rounded">
+          <h3 className="font-semibold text-blue-900 mb-2">💡 해석:</h3>
+          <ul className="text-sm text-blue-800 space-y-1">
+            <li>• 부채비율 {부채비율.toFixed(0)}%: 25년말 {전년부채비율.toFixed(0)}% 대비 {Math.abs(부채비율 - 전년부채비율).toFixed(0)}%p 개선, 재무 안정성 크게 향상</li>
+            <li>• 유동비율 {유동비율.toFixed(0)}%: 단기 채무상환 능력 양호</li>
+            <li>• ROE {ROE.toFixed(1)}%: {year === 2026 ? '상반기' : '통년'} 순이익 {당기순이익.toFixed(0)}M, 안정적 수익성 유지</li>
+            <li>• 차입금비율 {차입금비율.toFixed(0)}%: 25년말 {전년차입금비율.toFixed(0)}% 대비 {Math.abs(차입금비율 - 전년차입금비율).toFixed(0)}%p 개선, 재무 레버리지 최적화</li>
+          </ul>
+        </div>
+        
+        {/* 우측: 차입가능한도 테이블 */}
+        <div className="bg-white rounded-lg border border-gray-300 overflow-hidden shadow-sm">
         <button
           onClick={() => setLoanLimitOpen(!loanLimitOpen)}
           className="w-full px-4 py-3 flex items-center justify-between bg-gray-50 hover:bg-gray-100 transition-colors"
@@ -177,17 +191,17 @@ export default function BSAnalysis({ bsData, year, previousYearData }: BSAnalysi
                   <td className="border border-gray-300 py-2 px-3 font-semibold">▼ 합계</td>
                   <td className="border border-gray-300 py-2 px-3">
                     <input
-                      type="number"
-                      value={loanLimits.합계.current}
-                      onChange={(e) => updateLoanLimit('합계', 'current', Number(e.target.value))}
+                      type="text"
+                      value={formatWithCommas(loanLimits.합계.current)}
+                      onChange={(e) => updateLoanLimit('합계', 'current', parseNumber(e.target.value))}
                       className="w-full px-2 py-1 text-right bg-transparent focus:bg-white focus:outline-none focus:ring-1 focus:ring-blue-500"
                     />
                   </td>
                   <td className="border border-gray-300 py-2 px-3">
                     <input
-                      type="number"
-                      value={loanLimits.합계.total}
-                      onChange={(e) => updateLoanLimit('합계', 'total', Number(e.target.value))}
+                      type="text"
+                      value={formatWithCommas(loanLimits.합계.total)}
+                      onChange={(e) => updateLoanLimit('합계', 'total', parseNumber(e.target.value))}
                       className="w-full px-2 py-1 text-right bg-transparent focus:bg-white focus:outline-none focus:ring-1 focus:ring-blue-500"
                     />
                   </td>
@@ -199,17 +213,17 @@ export default function BSAnalysis({ bsData, year, previousYearData }: BSAnalysi
                       <td className="border border-gray-300 py-2 px-3">{name}</td>
                       <td className="border border-gray-300 py-2 px-3">
                         <input
-                          type="number"
-                          value={limits.current}
-                          onChange={(e) => updateLoanLimit(name, 'current', Number(e.target.value))}
+                          type="text"
+                          value={formatWithCommas(limits.current)}
+                          onChange={(e) => updateLoanLimit(name, 'current', parseNumber(e.target.value))}
                           className="w-full px-2 py-1 text-right bg-transparent focus:bg-white focus:outline-none focus:ring-1 focus:ring-blue-500"
                         />
                       </td>
                       <td className="border border-gray-300 py-2 px-3">
                         <input
-                          type="number"
-                          value={limits.total}
-                          onChange={(e) => updateLoanLimit(name, 'total', Number(e.target.value))}
+                          type="text"
+                          value={formatWithCommas(limits.total)}
+                          onChange={(e) => updateLoanLimit(name, 'total', parseNumber(e.target.value))}
                           className="w-full px-2 py-1 text-right bg-transparent focus:bg-white focus:outline-none focus:ring-1 focus:ring-blue-500"
                         />
                       </td>
@@ -219,6 +233,7 @@ export default function BSAnalysis({ bsData, year, previousYearData }: BSAnalysi
             </table>
           </div>
         )}
+        </div>
       </div>
     </div>
   );

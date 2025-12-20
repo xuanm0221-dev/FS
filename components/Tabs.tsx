@@ -8,7 +8,7 @@ interface TabsProps {
 
 export default function Tabs({ tabs, activeTab, onChange }: TabsProps) {
   return (
-    <div className="sticky top-0 z-50 bg-navy shadow-md">
+    <div className="fixed top-0 left-0 right-0 z-50 bg-navy shadow-md">
       <div className="flex border-b border-gray-700">
         {tabs.map((tab, index) => (
           <button

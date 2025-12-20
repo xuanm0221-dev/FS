@@ -225,8 +225,8 @@ export default function Home() {
       {/* 상단 탭 */}
       <Tabs tabs={tabs} activeTab={activeTab} onChange={setActiveTab} />
 
-      {/* 내용 */}
-      <div className="p-0">
+      {/* 내용 - 상단 탭 높이만큼 패딩 추가 */}
+      <div className="p-0 pt-16">
         {/* 경영요약 */}
         {activeTab === 0 && (
           <ExecutiveSummary 

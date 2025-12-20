@@ -5,9 +5,8 @@ import Tabs from '@/components/Tabs';
 import YearTabs from '@/components/YearTabs';
 import BaseMonthSelector from '@/components/BaseMonthSelector';
 import FinancialTable from '@/components/FinancialTable';
-import { TableRow } from '@/lib/types';
-
-type TabType = 'PL' | 'BS' | 'CF' | 'CREDIT';
+import CreditStatus from '@/components/CreditStatus';
+import { TableRow, CreditData, TabType } from '@/lib/types';
 
 export default function Home() {
   const [activeTab, setActiveTab] = useState<number>(0);
@@ -21,6 +20,7 @@ export default function Home() {
   const [bsData, setBsData] = useState<TableRow[] | null>(null);
   const [workingCapitalData, setWorkingCapitalData] = useState<TableRow[] | null>(null);
   const [cfData, setCfData] = useState<TableRow[] | null>(null);
+  const [creditData, setCreditData] = useState<CreditData | null>(null);
   const [loading, setLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -44,6 +44,8 @@ export default function Home() {
         url = `/api/fs/bs?year=${year}`;
       } else if (type === 'CF') {
         url = `/api/fs/cf`;
+      } else if (type === 'CREDIT') {
+        url = `/api/fs/credit`;
       }
 
       if (!url) return;
@@ -62,6 +64,8 @@ export default function Home() {
         setWorkingCapitalData(result.workingCapital || null);
       } else if (type === 'CF') {
         setCfData(result.rows);
+      } else if (type === 'CREDIT') {
+        setCreditData(result);
       }
     } catch (err) {
       console.error(err);
@@ -81,6 +85,8 @@ export default function Home() {
       loadData('BS', bsYear);
     } else if (currentType === 'CF' && !cfData) {
       loadData('CF');
+    } else if (currentType === 'CREDIT' && !creditData) {
+      loadData('CREDIT');
     }
   }, [activeTab]);
 
@@ -225,11 +231,19 @@ export default function Home() {
           </div>
         )}
 
-        {/* 여신사용현황 - 추후 구현 */}
+        {/* 여신사용현황 */}
         {activeTab === 3 && (
-          <div className="p-12 text-center text-gray-500">
-            <div className="text-xl font-semibold mb-2">여신사용현황</div>
-            <div>추후 구현 예정입니다.</div>
+          <div>
+            <div className="bg-gray-100 border-b border-gray-300 px-6 py-3">
+              <span className="text-sm font-medium text-gray-700">2025년 11월말 기준</span>
+            </div>
+            {loading && <div className="p-6 text-center">로딩 중...</div>}
+            {error && <div className="p-6 text-center text-red-500">{error}</div>}
+            {creditData && !loading && (
+              <div className="p-6">
+                <CreditStatus data={creditData} />
+              </div>
+            )}
           </div>
         )}
       </div>

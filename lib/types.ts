@@ -36,7 +36,37 @@ export interface ComparisonData {
 
 // 재무제표 타입
 export type StatementType = 'PL' | 'BS' | 'CF';
+export type TabType = 'PL' | 'BS' | 'CF' | 'CREDIT';
 
 // 월 데이터 맵
 export type MonthDataMap = Map<string, number[]>; // account -> [month1, month2, ..., month12]
+
+// 여신사용현황 타입
+export interface CreditDealer {
+  name: string;
+  외상매출금: number;
+  선수금: number;
+  순여신: number;
+}
+
+export interface CreditData {
+  total: {
+    외상매출금: number;
+    선수금: number;
+    순여신: number;
+  };
+  dealers: CreditDealer[];
+  top17: CreditDealer[];
+  others: {
+    count: number;
+    외상매출금: number;
+    선수금: number;
+    순여신: number;
+  };
+  analysis: {
+    top17Ratio: number; // 상위 17개 비율
+    top1Ratio: number; // 최대 거래처 비율
+    riskLevel: '높음' | '낮음';
+  };
+}
 

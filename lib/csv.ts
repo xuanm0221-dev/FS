@@ -231,3 +231,60 @@ export async function readCFCSV(filePath: string, year: number): Promise<{ data:
   return { data: finalResult, year2024Values };
 }
 
+// Credit CSV 읽기 (대리상별 외상매출금, 선수금)
+export async function readCreditCSV(filePath: string) {
+  let content: string;
+
+  try {
+    // UTF-8 시도
+    content = fs.readFileSync(filePath, 'utf-8');
+  } catch (err) {
+    try {
+      // CP949(EUC-KR) 시도
+      const buffer = fs.readFileSync(filePath);
+      content = iconv.decode(buffer, 'cp949');
+    } catch (err2) {
+      throw new Error(`CSV 파일을 읽을 수 없습니다: ${filePath}`);
+    }
+  }
+
+  // CSV 파싱
+  const parsed = Papa.parse<string[]>(content, {
+    header: false,
+    skipEmptyLines: true,
+  });
+
+  const rows = parsed.data;
+  if (rows.length < 2) {
+    throw new Error('CSV 데이터가 부족합니다.');
+  }
+
+  // 첫 행은 헤더, 둘째 행부터 데이터
+  const dealers: Array<{ name: string; 외상매출금: number; 선수금: number }> = [];
+
+  for (let i = 1; i < rows.length; i++) {
+    const row = rows[i];
+    if (row.length < 2) continue;
+
+    const name = row[0]?.trim() || '';
+    const 외상매출금Str = row[1]?.trim() || '0';
+    const 선수금Str = row[2]?.trim() || '0';
+
+    // 숫자 파싱 (콤마, 공백, 따옴표 제거)
+    const parse = (str: string): number => {
+      if (!str || str === '-') return 0;
+      const cleaned = str.replace(/[",\s]/g, '');
+      const num = parseFloat(cleaned);
+      return isNaN(num) ? 0 : num;
+    };
+
+    dealers.push({
+      name,
+      외상매출금: parse(외상매출금Str),
+      선수금: parse(선수금Str),
+    });
+  }
+
+  return dealers;
+}
+

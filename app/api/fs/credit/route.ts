@@ -1,0 +1,77 @@
+import { NextResponse } from 'next/server';
+import path from 'path';
+import { readCreditCSV } from '@/lib/csv';
+import { CreditData, CreditDealer } from '@/lib/types';
+
+export async function GET() {
+  try {
+    const filePath = path.join(process.cwd(), 'credit', '2025.csv');
+    const dealers = await readCreditCSV(filePath);
+
+    // 첫 번째는 "합계" 행
+    const totalRow = dealers.find(d => d.name === '합계');
+    if (!totalRow) {
+      throw new Error('합계 행을 찾을 수 없습니다.');
+    }
+
+    // 나머지 대리상 (합계 제외)
+    const dealerList = dealers
+      .filter(d => d.name !== '합계')
+      .map(d => ({
+        name: d.name,
+        외상매출금: d.외상매출금,
+        선수금: d.선수금,
+        순여신: d.외상매출금 - d.선수금,
+      }));
+
+    // 순여신 기준 내림차순 정렬
+    dealerList.sort((a, b) => b.순여신 - a.순여신);
+
+    // 상위 17개
+    const top17 = dealerList.slice(0, 17);
+
+    // 나머지 (기타)
+    const others = dealerList.slice(17);
+    const othersSum = {
+      count: others.length,
+      외상매출금: others.reduce((sum, d) => sum + d.외상매출금, 0),
+      선수금: others.reduce((sum, d) => sum + d.선수금, 0),
+      순여신: others.reduce((sum, d) => sum + d.순여신, 0),
+    };
+
+    // 총 순여신
+    const total순여신 = totalRow.외상매출금 - totalRow.선수금;
+
+    // 분석 데이터
+    const top17Sum = top17.reduce((sum, d) => sum + d.순여신, 0);
+    const top1 = top17[0];
+
+    const top17Ratio = total순여신 > 0 ? (top17Sum / total순여신) * 100 : 0;
+    const top1Ratio = total순여신 > 0 && top1 ? (top1.순여신 / total순여신) * 100 : 0;
+
+    const response: CreditData = {
+      total: {
+        외상매출금: totalRow.외상매출금,
+        선수금: totalRow.선수금,
+        순여신: total순여신,
+      },
+      dealers: dealerList,
+      top17,
+      others: othersSum,
+      analysis: {
+        top17Ratio,
+        top1Ratio,
+        riskLevel: top1Ratio > 20 ? '높음' : '낮음',
+      },
+    };
+
+    return NextResponse.json(response);
+  } catch (error: any) {
+    console.error('Credit API 에러:', error);
+    return NextResponse.json(
+      { error: error?.message || '여신 데이터를 불러오는데 실패했습니다.' },
+      { status: 500 }
+    );
+  }
+}
+

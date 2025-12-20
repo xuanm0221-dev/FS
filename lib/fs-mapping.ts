@@ -772,7 +772,7 @@ export function calculateCF(data: FinancialData[], year2024Values: Map<string, n
       isCalculated: true,
       isBold: true,
       isHighlight: 'yellow',
-      values: [...기초현금, null], // 합계는 null
+      values: [...기초현금, 기말현금2024], // 2025년(합계) = 2024년 기말현금
       format: 'number',
       year2024Value: 기초현금2024,
     },
@@ -884,7 +884,7 @@ export function calculateCF(data: FinancialData[], year2024Values: Map<string, n
       isCalculated: true,
       isBold: true,
       isHighlight: 'yellow',
-      values: [...기말현금, null], // 합계는 null
+      values: [...기말현금, 기말현금[11]], // 2025년(합계) = 2025년 12월 기말현금
       format: 'number',
       year2024Value: 기말현금2024,
     },

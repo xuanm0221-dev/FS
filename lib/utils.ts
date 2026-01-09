@@ -30,16 +30,17 @@ export function formatNumber(
   return formatted;
 }
 
-// 퍼센트 포맷팅 (소수점 1자리)
+// 퍼센트 포맷팅 (소수점 자릿수 옵션)
 export function formatPercent(
   value: number | null | undefined, 
   showSign: boolean = false,
-  useParentheses: boolean = false
+  useParentheses: boolean = false,
+  decimalPlaces: number = 1
 ): string {
   if (value === null || value === undefined || isNaN(value) || !isFinite(value)) {
     return '-';
   }
-  const absPercentValue = Math.abs(value * 100).toFixed(1);
+  const absPercentValue = Math.abs(value * 100).toFixed(decimalPlaces);
   
   // 음수일 때
   if (value < 0) {

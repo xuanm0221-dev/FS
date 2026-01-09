@@ -120,10 +120,11 @@ export default function FinancialTable({
     value: number | null, 
     format?: 'number' | 'percent', 
     showSign: boolean = false,
-    useParentheses: boolean = false
+    useParentheses: boolean = false,
+    decimalPlaces: number = 1
   ) => {
     if (format === 'percent') {
-      return formatPercent(value, showSign, useParentheses);
+      return formatPercent(value, showSign, useParentheses, decimalPlaces);
     }
     return formatNumber(value, showSign, useParentheses);
   };
@@ -291,11 +292,10 @@ export default function FinancialTable({
           // 전년(12월) - 당월 그룹
           result.push(comparisonColumns[0]); // 전년(12월) - 브랜드별 컬럼 없음
           result.push(comparisonColumns[1]); // 당년(12월)
-          // 브랜드별 컬럼 (토글 가능)
+          // 브랜드별 컬럼 (토글 가능) - 한 셀에 두 줄로 표시
           if (!brandMonthCollapsed) {
             brands.forEach(brand => {
-              result.push(`${brand}`); // 브랜드별 금액 컬럼
-              result.push(`${brand} YoY`); // 브랜드별 YoY 컬럼
+              result.push(`${brand}`); // 브랜드별 통합 컬럼 (금액 + YoY)
             });
           }
           result.push(comparisonColumns[2]); // YoY (전체)
@@ -319,11 +319,10 @@ export default function FinancialTable({
               i++; // comparisonColumns[3] 건너뛰기
               
               result.push(comparisonColumns[4]); // 당년YTD
-              // 브랜드별 컬럼 (토글 가능)
+              // 브랜드별 컬럼 (토글 가능) - 한 셀에 두 줄로 표시
               if (!brandYtdCollapsed) {
                 brands.forEach(brand => {
-                  result.push(`${brand}`); // 브랜드별 금액 컬럼
-                  result.push(`${brand} YoY`); // 브랜드별 YoY 컬럼
+                  result.push(`${brand}`); // 브랜드별 통합 컬럼 (금액 + YoY)
                 });
               }
               i++; // comparisonColumns[4] 건너뛰기
@@ -347,11 +346,10 @@ export default function FinancialTable({
           // 24년연간 - 연간 그룹 (항상 표시)
           result.push(comparisonColumns[6]); // 24년연간 - 브랜드별 컬럼 없음
           result.push(comparisonColumns[7]); // 25년연간
-          // 브랜드별 컬럼 (토글 가능)
+          // 브랜드별 컬럼 (토글 가능) - 한 셀에 두 줄로 표시
           if (!brandAnnualCollapsed) {
             brands.forEach(brand => {
-              result.push(`${brand}`); // 브랜드별 금액 컬럼
-              result.push(`${brand} YoY`); // 브랜드별 YoY 컬럼
+              result.push(`${brand}`); // 브랜드별 통합 컬럼 (금액 + YoY)
             });
           }
           result.push(comparisonColumns[8]); // YoY (전체)
@@ -437,7 +435,7 @@ export default function FinancialTable({
                 }
                 
                 const isComparisonCol = showComparisons && comparisonColumns.includes(col);
-                const isBrandCol = showBrandBreakdown && (brands.includes(col) || brands.some(brand => col === `${brand} YoY`));
+                const isBrandCol = showBrandBreakdown && brands.includes(col);
                 
                 // CF: 기준월 외의 월 헤더는 진한 회색으로 표시
                 const isMonthCol = col.includes('월') && !col.includes('합계');
@@ -469,8 +467,7 @@ export default function FinancialTable({
                       ${isNonBaseMonthCol ? 'bg-gray-600' : ''}
                       ${!isNonBaseMonthCol && isComparisonCol ? 'bg-navy-light' : ''}
                       ${!isNonBaseMonthCol && !isComparisonCol && !isAccountCol && !isBrandCol ? 'bg-navy' : ''}
-                      ${isBrandCol && !col.endsWith(' YoY') ? 'bg-gray-700' : ''}
-                      ${col.endsWith(' YoY') && brands.some(brand => col === `${brand} YoY`) ? 'bg-gray-600' : ''}
+                      ${isBrandCol ? 'bg-gray-700' : ''}
                       ${(isMonthGroupHeader || isYtdGroupHeader || isAnnualGroupHeader) ? 'cursor-pointer hover:bg-gray-700' : ''}
                     `}
                     style={getColumnWidth()}
@@ -691,7 +688,7 @@ export default function FinancialTable({
                         // 전년(12월) - 브랜드별 컬럼 없음
                         cells.push(
                           <td key={`prev-month-${i}`} className={`border border-gray-300 px-4 py-2 text-right ${isBalanceCheck ? (row.comparisons.prevYearMonth === null || Math.abs(row.comparisons.prevYearMonth) < 10 ? 'bg-green-100' : 'bg-red-100') : getHighlightClass(row.isHighlight)} ${row.isBold ? 'font-semibold' : ''} ${isNegative(row.comparisons.prevYearMonth) ? 'text-red-600' : ''}`}>
-                          {formatValue(row.comparisons.prevYearMonth, row.format, false, isBalanceSheet ? true : !row.isCalculated)}
+                          {formatValue(row.comparisons.prevYearMonth, row.format, false, true)}
                         </td>
                         );
                       } else if (col === comparisonColumns[1]) {
@@ -699,7 +696,7 @@ export default function FinancialTable({
                         currentGroup = 'month';
                         cells.push(
                           <td key={`curr-month-${i}`} className={`border border-gray-300 px-4 py-2 text-right ${isBalanceCheck ? (row.comparisons.currYearMonth === null || Math.abs(row.comparisons.currYearMonth) < 10 ? 'bg-green-100' : 'bg-red-100') : getHighlightClass(row.isHighlight)} ${row.isBold ? 'font-semibold' : ''} ${isNegative(row.comparisons.currYearMonth) ? 'text-red-600' : ''}`}>
-                          {formatValue(row.comparisons.currYearMonth, row.format, false, isBalanceSheet ? true : !row.isCalculated)}
+                          {formatValue(row.comparisons.currYearMonth, row.format, false, true)}
                         </td>
                         );
                       } else if (col === comparisonColumns[2]) {
@@ -722,7 +719,7 @@ export default function FinancialTable({
                           // 손익계산서: 전년YTD - 브랜드별 컬럼 없음
                           cells.push(
                             <td key={`prev-ytd-${i}`} className={`border border-gray-300 px-4 py-2 text-right ${getHighlightClass(row.isHighlight)} ${row.isBold ? 'font-semibold' : ''} ${isNegative(row.comparisons.prevYearYTD) ? 'text-red-600' : ''}`}>
-                              {formatValue(row.comparisons.prevYearYTD, row.format, false, false)}
+                              {formatValue(row.comparisons.prevYearYTD, row.format, false, true)}
                             </td>
                           );
                         }
@@ -740,7 +737,7 @@ export default function FinancialTable({
                           currentGroup = 'ytd';
                           cells.push(
                             <td key={`curr-ytd-${i}`} className={`border border-gray-300 px-4 py-2 text-right ${getHighlightClass(row.isHighlight)} ${row.isBold ? 'font-semibold' : ''} ${isNegative(row.comparisons.currYearYTD) ? 'text-red-600' : ''}`}>
-                              {formatValue(row.comparisons.currYearYTD, row.format, false, false)}
+                              {formatValue(row.comparisons.currYearYTD, row.format, false, true)}
                             </td>
                           );
                         }
@@ -766,7 +763,7 @@ export default function FinancialTable({
                         currentGroup = 'annual';
                         cells.push(
                           <td key={`prev-annual-${i}`} className={`border border-gray-300 px-4 py-2 text-right ${isBalanceCheck ? (row.comparisons.prevYearAnnual === null || Math.abs(row.comparisons.prevYearAnnual) < 10 ? 'bg-green-100' : 'bg-red-100') : getHighlightClass(row.isHighlight)} ${row.isBold ? 'font-semibold' : ''} ${isNegative(row.comparisons.prevYearAnnual) ? 'text-red-600' : ''}`}>
-                          {formatValue(row.comparisons.prevYearAnnual, row.format, false, isBalanceSheet)}
+                          {formatValue(row.comparisons.prevYearAnnual, row.format, false, true)}
                         </td>
                         );
                       } else if (col === comparisonColumns[isBalanceSheet ? (hideYtd ? 4 : 7) : 7]) {
@@ -774,7 +771,7 @@ export default function FinancialTable({
                         currentGroup = 'annual';
                         cells.push(
                           <td key={`curr-annual-${i}`} className={`border border-gray-300 px-4 py-2 text-right ${isBalanceCheck ? (row.comparisons.currYearAnnual === null || Math.abs(row.comparisons.currYearAnnual) < 10 ? 'bg-green-100' : 'bg-red-100') : getHighlightClass(row.isHighlight)} ${row.isBold ? 'font-semibold' : ''} ${isNegative(row.comparisons.currYearAnnual) ? 'text-red-600' : ''}`}>
-                          {formatValue(row.comparisons.currYearAnnual, row.format, false, isBalanceSheet)}
+                          {formatValue(row.comparisons.currYearAnnual, row.format, false, true)}
                         </td>
                         );
                       } else if (col === comparisonColumns[isBalanceSheet ? (hideYtd ? 5 : 8) : 8]) {
@@ -785,7 +782,7 @@ export default function FinancialTable({
                         </td>
                         );
                       } else if (brands.includes(col)) {
-                        // 브랜드별 금액 컬럼
+                        // 브랜드별 통합 컬럼 (금액 + YoY 한 셀에 두 줄)
                         const brand = col;
                         let currValue: number | null = null;
                         let prevValue: number | null = null;
@@ -802,39 +799,41 @@ export default function FinancialTable({
                           prevValue = row.brandComparisons.annual.prevYear[brand.toLowerCase()] ?? null;
                         }
                         
-                        cells.push(
-                          <td key={`brand-${brand}-${i}`} className={`border border-gray-300 px-4 py-2 text-right bg-white ${getHighlightClass(row.isHighlight)} ${row.isBold ? 'font-semibold' : ''} ${isNegative(currValue) ? 'text-red-600' : ''}`}>
-                            {formatValue(currValue, row.format, false, isBalanceSheet ? true : !row.isCalculated)}
-                          </td>
-                        );
-                      } else if (col.endsWith(' YoY') && brands.some(brand => col === `${brand} YoY`)) {
-                        // 브랜드별 YoY 컬럼
-                        const brand = col.replace(' YoY', '');
-                        let currValue: number | null = null;
-                        let prevValue: number | null = null;
-                        let brandYoY: number | null = null;
+                        // YoY 계산
+                        const brandYoY = (currValue !== null && prevValue !== null) ? currValue - prevValue : null;
                         
-                        // currentGroup을 기반으로 데이터 가져오기
-                        if (currentGroup === 'month' && row.brandComparisons) {
-                          currValue = row.brandComparisons.month.currYear[brand.toLowerCase()] ?? null;
-                          prevValue = row.brandComparisons.month.prevYear[brand.toLowerCase()] ?? null;
-                        } else if (currentGroup === 'ytd' && row.brandComparisons) {
-                          currValue = row.brandComparisons.ytd.currYear[brand.toLowerCase()] ?? null;
-                          prevValue = row.brandComparisons.ytd.prevYear[brand.toLowerCase()] ?? null;
-                        } else if (currentGroup === 'annual' && row.brandComparisons) {
-                          currValue = row.brandComparisons.annual.currYear[brand.toLowerCase()] ?? null;
-                          prevValue = row.brandComparisons.annual.prevYear[brand.toLowerCase()] ?? null;
+                        // YoY 퍼센트 계산 (비율 방식: 당년 / 전년)
+                        let brandYoYPercent: number | null = null;
+                        if (currValue !== null && prevValue !== null && prevValue !== 0) {
+                          brandYoYPercent = currValue / prevValue; // 1.11 = 111%
                         }
-                        
-                        brandYoY = (currValue !== null && prevValue !== null) ? currValue - prevValue : null;
                         
                         // 마지막 브랜드(SUPRA)가 아닌 경우 오른쪽에 구분선 추가
                         const isLastBrand = brand.toUpperCase() === 'SUPRA';
-                        const borderClass = isLastBrand ? 'border-r border-gray-300' : 'border-r-2 border-gray-400';
+                        const borderClass = isLastBrand ? 'border-r border-gray-300' : 'border-r-2 border-gray-300';
                         
                         cells.push(
-                          <td key={`brand-yoy-${brand}-${i}`} className={`border border-gray-300 ${borderClass} px-4 py-2 text-right bg-gray-100 ${getHighlightClass(row.isHighlight)} ${row.isBold ? 'font-semibold' : ''} ${isNegative(brandYoY) ? 'text-red-600' : brandYoY !== null && brandYoY > 0 ? 'text-green-600' : ''}`}>
-                            {formatValue(brandYoY, row.format, true, false)}
+                          <td key={`brand-${brand}-${i}`} className={`border border-gray-300 ${borderClass} px-4 py-2 text-right bg-white ${getHighlightClass(row.isHighlight)} ${row.isBold ? 'font-semibold' : ''}`}>
+                            <div className="flex flex-col items-end">
+                              {/* 첫 줄: 금액 (현재 크기) */}
+                              <div className={isNegative(currValue) ? 'text-red-600' : ''}>
+                                {formatValue(currValue, row.format, false, true)}
+                              </div>
+                              {/* 둘째 줄: YoY 금액, YoY 퍼센트 (2/3 크기) */}
+                              <div className="text-xs leading-tight mt-0.5">
+                                <span className={isNegative(brandYoY) ? 'text-red-600' : brandYoY !== null && brandYoY > 0 ? 'text-green-600' : ''}>
+                                  {formatValue(brandYoY, row.format, true, false)}
+                                </span>
+                                {brandYoYPercent !== null && (
+                                  <>
+                                    <span className="mx-1">,</span>
+                                    <span className={brandYoYPercent < 1 ? 'text-red-600' : brandYoYPercent > 1 ? 'text-green-600' : ''}>
+                                      {formatPercent(brandYoYPercent, false, false, 0)}
+                                    </span>
+                                  </>
+                                )}
+                              </div>
+                            </div>
                           </td>
                         );
                       }

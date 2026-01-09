@@ -69,7 +69,7 @@ export default function Home() {
   const saveRemarkDebounced = useMemo(() => {
     const timeouts: { [key: string]: NodeJS.Timeout } = {};
     
-    return (account: string, remark: string, type: 'bs' | 'wc') => {
+    return async (account: string, remark: string, type: 'bs' | 'wc') => {
       const key = `${type}-${account}`;
       if (timeouts[key]) {
         clearTimeout(timeouts[key]);
@@ -77,11 +77,20 @@ export default function Home() {
       
       timeouts[key] = setTimeout(async () => {
         try {
-          await fetch('/api/remarks', {
+          const response = await fetch('/api/remarks', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ account, remark, type })
           });
+          
+          const data = await response.json();
+          
+          if (!data.success) {
+            console.error('비고 저장 실패:', data.error || 'Unknown error');
+            // 에러가 발생해도 사용자 경험을 위해 조용히 실패 (콘솔에만 로그)
+          } else {
+            console.log('비고 저장 성공:', account);
+          }
         } catch (error) {
           console.error('비고 저장 실패:', error);
         }

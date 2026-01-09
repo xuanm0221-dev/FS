@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { CreditData } from '@/lib/types';
 import { formatNumber } from '@/lib/utils';
 
@@ -17,6 +17,65 @@ export default function CreditStatus({ data }: CreditStatusProps) {
   );
   const [editingRecovery, setEditingRecovery] = useState<boolean>(false);
   const [othersCollapsed, setOthersCollapsed] = useState<boolean>(true);
+
+  // 비고 데이터 로드
+  useEffect(() => {
+    const loadCreditRemarks = async () => {
+      try {
+        const response = await fetch('/api/remarks?type=credit');
+        if (response.ok) {
+          const data = await response.json();
+          if (data.remarks) {
+            if (data.remarks.wuhanMemo) {
+              setWuhanMemo(data.remarks.wuhanMemo);
+            }
+            if (data.remarks.recoveryPlan) {
+              setRecoveryPlan(data.remarks.recoveryPlan);
+            }
+          }
+        }
+      } catch (error) {
+        console.error('여신 비고 로드 실패:', error);
+      }
+    };
+
+    loadCreditRemarks();
+  }, []);
+
+  // 비고 저장 함수 (디바운스)
+  const saveCreditRemarkDebounced = useMemo(() => {
+    const timeouts: { [key: string]: NodeJS.Timeout } = {};
+    
+    return async (key: 'wuhanMemo' | 'recoveryPlan', value: string) => {
+      if (timeouts[key]) {
+        clearTimeout(timeouts[key]);
+      }
+      
+      timeouts[key] = setTimeout(async () => {
+        try {
+          const response = await fetch('/api/remarks', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ 
+              account: key, 
+              remark: value, 
+              type: 'credit' 
+            })
+          });
+          
+          const data = await response.json();
+          
+          if (!data.success) {
+            console.error('여신 비고 저장 실패:', data.error || 'Unknown error');
+          } else {
+            console.log('여신 비고 저장 성공:', key);
+          }
+        } catch (error) {
+          console.error('여신 비고 저장 실패:', error);
+        }
+      }, 1000); // 1초 디바운스
+    };
+  }, []);
 
   return (
     <div className="space-y-6">
@@ -134,7 +193,10 @@ export default function CreditStatus({ data }: CreditStatusProps) {
                   <input
                     type="text"
                     value={recoveryPlan}
-                    onChange={(e) => setRecoveryPlan(e.target.value)}
+                    onChange={(e) => {
+                      setRecoveryPlan(e.target.value);
+                      saveCreditRemarkDebounced('recoveryPlan', e.target.value);
+                    }}
                     onBlur={() => setEditingRecovery(false)}
                     onKeyDown={(e) => {
                       if (e.key === 'Enter') setEditingRecovery(false);
@@ -175,7 +237,10 @@ export default function CreditStatus({ data }: CreditStatusProps) {
                           <input
                             type="text"
                             value={wuhanMemo}
-                            onChange={(e) => setWuhanMemo(e.target.value)}
+                            onChange={(e) => {
+                              setWuhanMemo(e.target.value);
+                              saveCreditRemarkDebounced('wuhanMemo', e.target.value);
+                            }}
                             onBlur={() => setEditingWuhan(false)}
                             onKeyDown={(e) => {
                               if (e.key === 'Enter') setEditingWuhan(false);

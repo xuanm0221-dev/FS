@@ -908,7 +908,7 @@ export function calculateCF(
   const sumArray = (arr: number[]) => arr.reduce((sum: number, v) => sum + v, 0);
   
   // 2024년 데이터 계산
-  const 기초현금2024 = 140853827.859988; // 2024년 1월 기초현금 (고정값)
+  const 기초현금2024 = year2024Values.get('기초현금') ?? 140853827.859988; // CSV에서 읽거나 기본값
   const 영업활동2024 = sum2024Values(['MLB', 'KIDS', 'Discovery', 'Duvetica', 'Supra', '대리상선금', '대리상보증금', '정부보조금', '기타수익', '본사', '위탁생산', '본사선급금', '운영비']);
   const 입금2024 = sum2024Values(['MLB', 'KIDS', 'Discovery', 'Duvetica', 'Supra', '대리상선금', '대리상보증금', '정부보조금', '기타수익']);
   const 매출수금2024 = sum2024Values(['MLB', 'KIDS', 'Discovery', 'Duvetica', 'Supra']);

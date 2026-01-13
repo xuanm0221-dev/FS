@@ -32,11 +32,11 @@ export async function GET() {
       totalRow = calculatedTotal;
     }
 
-    // 나머지 대리상 (합계 제외)
+    // 나머지 대리상 (합계 제외, 외상매출금과 선수금이 모두 0인 대리상 제외)
     const dealerList = dealers
       .filter(d => {
         const name = d.name.trim();
-        return name !== '합계' && name !== '';
+        return name !== '합계' && name !== '' && !(d.외상매출금 === 0 && d.선수금 === 0);
       })
       .map(d => ({
         name: d.name,

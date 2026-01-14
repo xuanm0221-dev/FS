@@ -634,8 +634,15 @@ export default function FinancialTable({
                     
                     // 2026년 재무상태표: 월별 비교 없이 기말 비교만
                     if (isBalanceSheet && currentYear === 2026 && row.comparisons) {
-                      // prevYearAnnual은 이미 월별 데이터 전에 렌더링되었으므로 제외
-                      // 26년6월과 YoY만 렌더링
+                      // 월별 데이터를 접었을 때는 prevYearAnnual도 여기서 렌더링
+                      if (monthsCollapsed) {
+                        cells.push(
+                          <td key="prev-annual" className={`border border-gray-300 px-4 py-2 text-right ${isBalanceCheck ? (row.comparisons.prevYearAnnual === null || Math.abs(row.comparisons.prevYearAnnual) < 10 ? 'bg-green-100' : 'bg-red-100') : getHighlightClass(row.isHighlight)} ${row.isBold ? 'font-semibold' : ''} ${isNegative(row.comparisons.prevYearAnnual) ? 'text-red-600' : ''}`}>
+                            {formatValue(row.comparisons.prevYearAnnual, row.format, false, true)}
+                          </td>
+                        );
+                      }
+                      // 26년6월과 YoY는 항상 렌더링
                       cells.push(
                         <td key="curr-annual" className={`border border-gray-300 px-4 py-2 text-right ${isBalanceCheck ? (row.comparisons.currYearAnnual === null || Math.abs(row.comparisons.currYearAnnual) < 10 ? 'bg-green-100' : 'bg-red-100') : getHighlightClass(row.isHighlight)} ${row.isBold ? 'font-semibold' : ''} ${isNegative(row.comparisons.currYearAnnual) ? 'text-red-600' : ''}`}>
                           {formatValue(row.comparisons.currYearAnnual, row.format, false, true)}

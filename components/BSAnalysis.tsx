@@ -50,6 +50,11 @@ export default function BSAnalysis({ bsData, year, previousYearData }: BSAnalysi
   const 전년부채비율 = 전년자본 !== 0 ? (전년부채 / 전년자본) * 100 : 0;
   const 전년차입금비율 = 전년자산 !== 0 ? (전년차입금 / 전년자산) * 100 : 0;
   
+  // 차입금 변동 계산
+  const 차입금변동 = 차입금 - 전년차입금;
+  const 차입금변동액 = Math.abs(차입금변동) / 1000000; // M 단위
+  const 차입금변동방향 = 차입금변동 > 0 ? '증가' : '상환';
+  
   // 차입가능한도 state
   const [loanLimits, setLoanLimits] = useState({
     합계: { current: 1000000, total: 1000000 },
@@ -102,8 +107,8 @@ export default function BSAnalysis({ bsData, year, previousYearData }: BSAnalysi
             (25년말 {전년부채비율.toFixed(0)}%)
           </div>
           <div className="text-xs text-gray-600 mt-2">
-            25년말 대비 {(부채비율 - 전년부채비율).toFixed(0)}%p 개선<br/>
-            차입금 상환 및 자본 증가
+            25년말 대비 {Math.abs(부채비율 - 전년부채비율).toFixed(0)}%p {부채비율 < 전년부채비율 ? '개선' : '악화'}<br/>
+            {차입금변동방향 === '상환' ? '차입금 상환 및 자본 증가' : '차입금 증가'}
           </div>
         </div>
         
@@ -117,8 +122,8 @@ export default function BSAnalysis({ bsData, year, previousYearData }: BSAnalysi
             (25년말 {전년차입금비율.toFixed(0)}%)
           </div>
           <div className="text-xs text-gray-600 mt-2">
-            차입금 {(차입금 / 1000).toFixed(0)}M 상환으로<br/>
-            {Math.abs(차입금비율 - 전년차입금비율).toFixed(0)}%p 대폭 개선
+            차입금 {차입금변동액.toFixed(0)}M {차입금변동방향}으로<br/>
+            {Math.abs(차입금비율 - 전년차입금비율).toFixed(0)}%p {차입금비율 < 전년차입금비율 ? '개선' : '악화'}
           </div>
         </div>
         
@@ -157,10 +162,10 @@ export default function BSAnalysis({ bsData, year, previousYearData }: BSAnalysi
         <div className="bg-blue-50 border-l-4 border-blue-500 p-4 rounded">
           <h3 className="font-semibold text-blue-900 mb-2">💡 해석:</h3>
           <ul className="text-sm text-blue-800 space-y-1">
-            <li>• 부채비율 {부채비율.toFixed(0)}%: 25년말 {전년부채비율.toFixed(0)}% 대비 {Math.abs(부채비율 - 전년부채비율).toFixed(0)}%p 개선, 재무 안정성 크게 향상</li>
+            <li>• 부채비율 {부채비율.toFixed(0)}%: 25년말 {전년부채비율.toFixed(0)}% 대비 {Math.abs(부채비율 - 전년부채비율).toFixed(0)}%p {부채비율 < 전년부채비율 ? '개선' : '악화'}, 재무 안정성 {부채비율 < 전년부채비율 ? '크게 향상' : '관리 필요'}</li>
             <li>• 유동비율 {유동비율.toFixed(0)}%: 단기 채무상환 능력 양호</li>
             <li>• ROE {ROE.toFixed(1)}%: {year === 2026 ? '상반기' : '통년'} 순이익 {당기순이익.toFixed(0)}M, 안정적 수익성 유지</li>
-            <li>• 차입금비율 {차입금비율.toFixed(0)}%: 25년말 {전년차입금비율.toFixed(0)}% 대비 {Math.abs(차입금비율 - 전년차입금비율).toFixed(0)}%p 개선, 재무 레버리지 최적화</li>
+            <li>• 차입금비율 {차입금비율.toFixed(0)}%: 25년말 {전년차입금비율.toFixed(0)}% 대비 {Math.abs(차입금비율 - 전년차입금비율).toFixed(0)}%p {차입금비율 < 전년차입금비율 ? '개선' : '악화'}, 차입금 {차입금변동액.toFixed(0)}M {차입금변동방향}</li>
           </ul>
         </div>
         

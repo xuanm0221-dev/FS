@@ -132,8 +132,8 @@ export interface ExecutiveSummaryData {
       부채비율: string[];
     };
     브랜드포트폴리오: {
-      MLB장종: string[];
-      신규브랜드성장: string[];
+      기존브랜드: string[];
+      신규브랜드: string[];
     };
   };
 }

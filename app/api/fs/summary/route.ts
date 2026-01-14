@@ -1,15 +1,8 @@
 import { NextResponse } from 'next/server';
+import path from 'path';
+import { readCSV } from '@/lib/csv';
+import { calculatePL, calculateBS } from '@/lib/fs-mapping';
 import { ExecutiveSummaryData, TableRow } from '@/lib/types';
-
-// 내부 API 호출 함수
-async function fetchAPI(url: string) {
-  const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000';
-  const response = await fetch(`${baseUrl}${url}`, { cache: 'no-store' });
-  if (!response.ok) {
-    throw new Error(`API 호출 실패: ${url}`);
-  }
-  return response.json();
-}
 
 // 값 가져오기 헬퍼 함수
 function getValue(data: TableRow[], account: string, monthIndex: number): number {
@@ -185,17 +178,22 @@ function generateSummary(
 
 export async function GET() {
   try {
-    // 각 탭의 API에서 이미 계산된 데이터 가져오기
-    const pl2024 = await fetchAPI('/api/fs/pl?year=2024');
-    const pl2025 = await fetchAPI('/api/fs/pl?year=2025');
-    const bs2024 = await fetchAPI('/api/fs/bs?year=2024');
-    const bs2025 = await fetchAPI('/api/fs/bs?year=2025');
+    // CSV 파일에서 직접 데이터 읽기
+    const pl2024Path = path.join(process.cwd(), 'PL', '2024.csv');
+    const pl2025Path = path.join(process.cwd(), 'PL', '2025.csv');
+    const bs2024Path = path.join(process.cwd(), 'BS', '2024.csv');
+    const bs2025Path = path.join(process.cwd(), 'BS', '2025.csv');
     
-    // data 프로퍼티에서 TableRow[] 추출
-    const pl2024Rows = pl2024.data;
-    const pl2025Rows = pl2025.data;
-    const bs2024Rows = bs2024.data;
-    const bs2025Rows = bs2025.data;
+    const pl2024Data = await readCSV(pl2024Path, 2024);
+    const pl2025Data = await readCSV(pl2025Path, 2025);
+    const bs2024Data = await readCSV(bs2024Path, 2024);
+    const bs2025Data = await readCSV(bs2025Path, 2025);
+    
+    // PL, BS 계산
+    const pl2024Rows = calculatePL(pl2024Data);
+    const pl2025Rows = calculatePL(pl2025Data);
+    const bs2024Rows = calculateBS(bs2024Data);
+    const bs2025Rows = calculateBS(bs2025Data);
     
     // 경영요약 생성
     const summary = generateSummary(pl2024Rows, pl2025Rows, bs2024Rows, bs2025Rows);

@@ -36,13 +36,19 @@ export default function ExecutiveSummary({ data, onChange, onReset }: ExecutiveS
   ) => {
     const lines = value.split('\n').filter(line => line.trim());
     
-    if (section === '브랜드포트폴리오' && subsection === '신규브랜드성장') {
+    if (section === '브랜드포트폴리오') {
       // 브랜드포트폴리오 섹션을 새 구조로 변환
       const brandPortfolio = { ...data.sections.브랜드포트폴리오 };
+      
       // 이전 키 제거 (있다면)
-      delete (brandPortfolio as any).신규브랜드고성장;
-      // 새 키로 업데이트
-      brandPortfolio.신규브랜드성장 = lines;
+      if (subsection === '기존브랜드') {
+        delete (brandPortfolio as any).MLB장종;
+        brandPortfolio.기존브랜드 = lines;
+      } else if (subsection === '신규브랜드') {
+        delete (brandPortfolio as any).신규브랜드고성장;
+        delete (brandPortfolio as any).신규브랜드성장;
+        brandPortfolio.신규브랜드 = lines;
+      }
       
       onChange({
         ...data,
@@ -88,8 +94,11 @@ export default function ExecutiveSummary({ data, onChange, onReset }: ExecutiveS
     }
   };
 
-  // 이전 구조 호환성 처리 (신규브랜드고성장 -> 신규브랜드성장)
-  const 신규브랜드성장 = data.sections.브랜드포트폴리오.신규브랜드성장 || 
+  // 이전 구조 호환성 처리
+  const 기존브랜드 = data.sections.브랜드포트폴리오.기존브랜드 || 
+    (data.sections.브랜드포트폴리오 as any).MLB장종 || [];
+  const 신규브랜드 = data.sections.브랜드포트폴리오.신규브랜드 || 
+    (data.sections.브랜드포트폴리오 as any).신규브랜드성장 || 
     (data.sections.브랜드포트폴리오 as any).신규브랜드고성장 || [];
 
   return (
@@ -240,23 +249,23 @@ export default function ExecutiveSummary({ data, onChange, onReset }: ExecutiveS
             </h2>
 
             <div className="space-y-4">
-              {/* MLB 장종 */}
+              {/* 기존브랜드 */}
               <div>
-                <h3 className="font-semibold text-gray-700 mb-2 text-sm">MLB 장종</h3>
+                <h3 className="font-semibold text-gray-700 mb-2 text-sm">기존브랜드</h3>
                 <textarea
-                  value={data.sections.브랜드포트폴리오.MLB장종.join('\n')}
-                  onChange={(e) => handleTextChange('브랜드포트폴리오', 'MLB장종', e.target.value)}
+                  value={기존브랜드.join('\n')}
+                  onChange={(e) => handleTextChange('브랜드포트폴리오', '기존브랜드', e.target.value)}
                   className="w-full p-3 border border-gray-300 rounded text-sm leading-relaxed focus:outline-none focus:ring-2 focus:ring-blue-500"
                   rows={2}
                 />
               </div>
 
-              {/* 신규 브랜드 성장 */}
+              {/* 신규 브랜드 */}
               <div>
-                <h3 className="font-semibold text-gray-700 mb-2 text-sm">신규 브랜드 성장</h3>
+                <h3 className="font-semibold text-gray-700 mb-2 text-sm">신규 브랜드</h3>
                 <textarea
-                  value={신규브랜드성장.join('\n')}
-                  onChange={(e) => handleTextChange('브랜드포트폴리오', '신규브랜드성장', e.target.value)}
+                  value={신규브랜드.join('\n')}
+                  onChange={(e) => handleTextChange('브랜드포트폴리오', '신규브랜드', e.target.value)}
                   className="w-full p-3 border border-gray-300 rounded text-sm leading-relaxed focus:outline-none focus:ring-2 focus:ring-blue-500"
                   rows={3}
                 />

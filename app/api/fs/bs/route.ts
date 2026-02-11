@@ -179,6 +179,23 @@ export async function GET(request: NextRequest) {
       tableRows = calculateComparisonDataBS(tableRows, prevTableRows, year);
       workingCapitalRows = calculateComparisonDataBS(workingCapitalRows, prevWorkingCapitalRows, year);
       
+      // 2026년일 때 운전자본표에 2024년(기말) 부여 (2025년(기말) 전월대비용)
+      if (year === 2026) {
+        const twoYearsBackFilePath = path.join(process.cwd(), '파일', 'BS', '2024.csv');
+        try {
+          const data2024 = await readCSV(twoYearsBackFilePath, 2024);
+          const wc2024 = calculateWorkingCapital(data2024);
+          const wc2024ByAccount = new Map(wc2024.map((r) => [r.account, r]));
+          workingCapitalRows = workingCapitalRows.map((row) => {
+            const row2024 = wc2024ByAccount.get(row.account);
+            const year2024Value = row2024?.values?.[11] ?? null;
+            return { ...row, year2024Value };
+          });
+        } catch {
+          // 2024 파일 없으면 year2024Value 없이 유지
+        }
+      }
+      
       // 운전자본 비고 자동 생성 (BS 데이터 기반)
       wcRemarksAuto = generateWCRemarks(tableRows, prevTableRows, year);
     }

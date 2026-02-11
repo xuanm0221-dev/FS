@@ -38,12 +38,6 @@ export default function CashBorrowingBalance({
     return `${base} text-red-600`;
   };
 
-  // 기초잔액·기말잔액 열 배경 (민트)
-  const isBalanceColumn = (i: number) =>
-    monthsCollapsed ? i <= 1 : i === 0 || i === 13;
-  const balanceColBg = 'bg-amber-50';
-  const balanceColHeaderClass = 'bg-amber-50 text-amber-900';
-
   let displayCols: string[];
   let cashValues: number[];
   let borrowingValues: number[];
@@ -89,7 +83,7 @@ export default function CashBorrowingBalance({
                       : 'min-w-[100px]'
                     : 'min-w-[100px]';
                 return (
-                  <th key={i} className={`border border-gray-300 py-2.5 px-4 text-center ${dataColMinW} ${isBalanceColumn(i) ? balanceColHeaderClass : ''}`}>
+                  <th key={i} className={`border border-gray-300 py-2.5 px-4 text-center ${dataColMinW}`}>
                     {col}
                   </th>
                 );
@@ -103,9 +97,8 @@ export default function CashBorrowingBalance({
               </td>
               {cashValues.map((v, i) => {
                 const isYoyCol = is2026 && i === cashValues.length - 1;
-                const cellBg = isBalanceColumn(i) ? balanceColBg : 'bg-gray-50';
                 return (
-                  <td key={i} className={`${cellClass(v, { isYoy: isYoyCol, rowType: 'cash' })} ${cellBg}`}>
+                  <td key={i} className={`${cellClass(v, { isYoy: isYoyCol, rowType: 'cash' })} bg-gray-50`}>
                     {isYoyCol ? formatYoy(v) : formatCell(v)}
                   </td>
                 );
@@ -117,9 +110,8 @@ export default function CashBorrowingBalance({
               </td>
               {borrowingValues.map((v, i) => {
                 const isYoyCol = is2026 && i === borrowingValues.length - 1;
-                const cellBg = isBalanceColumn(i) ? balanceColBg : 'bg-gray-50';
                 return (
-                  <td key={i} className={`${cellClass(v, { isYoy: isYoyCol, rowType: 'borrowing' })} ${cellBg}`}>
+                  <td key={i} className={`${cellClass(v, { isYoy: isYoyCol, rowType: 'borrowing' })} bg-gray-50`}>
                     {isYoyCol ? formatYoy(v) : formatCell(v)}
                   </td>
                 );

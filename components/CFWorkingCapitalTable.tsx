@@ -10,6 +10,9 @@ const WC_ACCOUNTS = [
   '직영AR',
   '대리상AR',
   '재고자산',
+  'MLB',
+  'KIDS',
+  'DISCOVERY',
   '외상매입금',
   '본사AP',
   '제품AP',
@@ -25,7 +28,7 @@ export default function CFWorkingCapitalTable({
   rows,
   monthsCollapsed = true,
 }: CFWorkingCapitalTableProps) {
-  const [collapsed, setCollapsed] = useState<Set<string>>(new Set(['외상매출금', '외상매입금']));
+  const [collapsed, setCollapsed] = useState<Set<string>>(new Set(['외상매출금', '외상매입금', '재고자산']));
 
   const filtered = useMemo(() => rows.filter((r) => WC_ACCOUNTS.includes(r.account as any)), [rows]);
 
@@ -51,26 +54,31 @@ export default function CFWorkingCapitalTable({
   };
 
   const 운전자본Values = useMemo(() => buildRowValues(getRow('운전자본')), [filtered, getRow]);
+  const year2024Value = getRow('운전자본')?.year2024Value ?? null; // 2024년(기말) — 2025년(기말) 전월대비용
   const 전월대비Values = useMemo(() => {
     const v = 운전자본Values;
     const out: (number | null)[] = [];
     for (let i = 0; i < 15; i++) {
       if (i === 0) {
-        const prev = v[0];
-        const next = v[1];
-        if (prev != null && next != null) out.push(next - prev);
+        // 2025년(기말) 전월대비 = 2025년(기말) − 2024년(기말)
+        if (v[0] != null && year2024Value != null) out.push(v[0] - year2024Value);
         else out.push(null);
-      } else if (i < 14) {
-        const prev = v[i];
-        const next = v[i + 1];
-        if (prev != null && next != null) out.push(next - prev);
+      } else if (i >= 1 && i <= 12) {
+        const prev = v[i - 1];
+        const curr = v[i];
+        if (prev != null && curr != null) out.push(curr - prev);
+        else out.push(null);
+      } else if (i === 13) {
+        const prev = v[0]; // 2025년(기말)
+        const curr = v[13]; // 2026년(기말)
+        if (prev != null && curr != null) out.push(curr - prev);
         else out.push(null);
       } else {
-        out.push(null);
+        out.push(null); // YoY 컬럼
       }
     }
     return out;
-  }, [운전자본Values]);
+  }, [운전자본Values, year2024Value]);
 
   const toggle = (key: string) => {
     setCollapsed((prev) => {
@@ -122,13 +130,21 @@ export default function CFWorkingCapitalTable({
 
     const 재고Row = getRow('재고자산');
     if (재고Row) {
+      const mlbRow = getRow('MLB');
+      const kidsRow = getRow('KIDS');
+      const discoveryRow = getRow('DISCOVERY');
+      const children = [mlbRow, kidsRow, discoveryRow].filter(Boolean).map((row) => ({
+        account: row!.account,
+        displayName: row!.account,
+        values: buildRowValues(row),
+      }));
       result.push({
         account: '재고자산',
         displayName: '재고자산',
         level: 1,
-        isGroup: false,
+        isGroup: true,
         values: buildRowValues(재고Row),
-        children: undefined,
+        children: children.length > 0 ? children : undefined,
       });
     }
 
@@ -193,11 +209,6 @@ export default function CFWorkingCapitalTable({
     return value < 0 ? `${base} text-red-600` : base;
   };
 
-  const isSumColumn = (colIndex: number) =>
-    monthsCollapsed ? colIndex <= 1 || colIndex === 13 : colIndex === 0 || colIndex === 13;
-  const sumColBg = 'bg-amber-50';
-  const sumColHeaderClass = 'bg-amber-50 text-amber-900';
-
   if (filtered.length === 0) return null;
 
   return (
@@ -212,20 +223,17 @@ export default function CFWorkingCapitalTable({
               </th>
               {monthsCollapsed ? (
                 <>
-                  <th className={`border border-gray-300 py-3 px-4 text-center min-w-[120px] ${sumColHeaderClass}`}>
+                  <th className="border border-gray-300 py-3 px-4 text-center min-w-[120px]">
                     {columnLabels[0]}
                   </th>
-                  <th className={`border border-gray-300 py-3 px-4 text-center min-w-[120px] ${sumColHeaderClass}`}>
+                  <th className="border border-gray-300 py-3 px-4 text-center min-w-[120px]">
                     {columnLabels[13]}
                   </th>
                   <th className="border border-gray-300 py-3 px-4 text-center min-w-[100px]">{columnLabels[14]}</th>
                 </>
               ) : (
                 columnLabels.map((col, i) => (
-                  <th
-                    key={i}
-                    className={`border border-gray-300 py-3 px-4 text-center min-w-[100px] ${isSumColumn(i) ? sumColHeaderClass : ''}`}
-                  >
+                  <th key={i} className="border border-gray-300 py-3 px-4 text-center min-w-[100px]">
                     {col}
                   </th>
                 ))
@@ -263,10 +271,10 @@ export default function CFWorkingCapitalTable({
                   </td>
                   {monthsCollapsed
                     ? [
-                        <td key="0" className={`${cellClass(row.values[0])} ${is합계 ? 'bg-yellow-50' : sumColBg}`}>
+                        <td key="0" className={`${cellClass(row.values[0])} ${is합계 ? 'bg-yellow-50' : ''}`}>
                           {formatCell(row.values[0], 0)}
                         </td>,
-                        <td key="13" className={`${cellClass(row.values[13])} ${is합계 ? 'bg-yellow-50' : sumColBg}`}>
+                        <td key="13" className={`${cellClass(row.values[13])} ${is합계 ? 'bg-yellow-50' : ''}`}>
                           {formatCell(row.values[13], 13)}
                         </td>,
                         <td key="14" className={`${cellClass(row.values[14])} ${is합계 ? 'bg-yellow-50' : ''}`}>
@@ -274,7 +282,7 @@ export default function CFWorkingCapitalTable({
                         </td>,
                       ]
                     : row.values.map((v, vi) => (
-                        <td key={vi} className={`${cellClass(v)} ${is합계 ? 'bg-yellow-50' : isSumColumn(vi) ? sumColBg : ''}`}>
+                        <td key={vi} className={`${cellClass(v)} ${is합계 ? 'bg-yellow-50' : ''}`}>
                           {formatCell(v, vi)}
                         </td>
                       ))}

@@ -152,7 +152,7 @@ export default function FinancialTable({
       const currYear = currentYear ? currentYear % 100 : 25;
       
       if (currentYear === 2026) {
-        // 2026년 접힌 뷰: 2025년 기말 | 2026년1월 | 2026년6월 | 2026년기말 | YoY(연간)
+        // 2026년: 접힌 뷰는 2025년기말|26년1월|26년기말|YoY(4컬럼), 펼침은 25년기말|1~12월|26년기말|YoY
         return [
           '2025년 기말',
           `${currYear}년1월`,
@@ -216,11 +216,11 @@ export default function FinancialTable({
       if (isBalanceSheet) {
         // 재무상태표
         if (currentYear === 2026) {
-          // 2026년 접힌: 2025년 기말 | 26년1월 | 26년6월 | 26년기말 | YoY(연간)
+          // 2026년 접힌: 2025년 기말 | 26년1월 | 26년기말 | YoY(연간) (26년6월 숨김)
           if (monthsCollapsed) {
             return [
               ...accountCol,
-              comparisonColumns[0], comparisonColumns[1], comparisonColumns[2],
+              comparisonColumns[0], comparisonColumns[1],
               comparisonColumns[3], comparisonColumns[4],
             ];
           } else {
@@ -641,12 +641,12 @@ export default function FinancialTable({
                       return 'month'; // 기본값 (안전장치)
                     };
                     
-                    // 2026년 재무상태표: 접힌 뷰 5컬럼(2025년기말|26년1월|26년6월|26년기말|YoY), 펼친 뷰는 26년기말+YoY만
+                    // 2026년 재무상태표: 접힌 뷰 4컬럼(2025년기말|26년1월|26년기말|YoY), 펼친 뷰는 26년기말+YoY만
                     if (isBalanceSheet && currentYear === 2026 && row.comparisons) {
                       const cellClass = (val: number | null) =>
                         `border border-gray-300 px-4 py-2 text-right ${isBalanceCheck ? (val === null || Math.abs(val) < 10 ? 'bg-green-100' : 'bg-red-100') : getHighlightClass(row.isHighlight)} ${row.isBold ? 'font-semibold' : ''} ${isNegative(val) ? 'text-red-600' : ''}`;
                       if (monthsCollapsed) {
-                        // 접힌: 2025년 기말 | 2026년1월 | 2026년6월 | 2026년기말 | YoY(연간)
+                        // 접힌: 2025년 기말 | 26년1월 | 26년기말 | YoY(연간)
                         cells.push(
                           <td key="prev-annual" className={cellClass(row.comparisons.prevYearAnnual)}>
                             {formatValue(row.comparisons.prevYearAnnual, row.format, false, true)}
@@ -655,11 +655,6 @@ export default function FinancialTable({
                         cells.push(
                           <td key="26-1" className={`${cellClass(row.values[0] ?? null)} bg-amber-50`}>
                             {formatValue(row.values[0] ?? null, row.format, false, true)}
-                          </td>
-                        );
-                        cells.push(
-                          <td key="26-6" className={cellClass(row.values[5] ?? null)}>
-                            {formatValue(row.values[5] ?? null, row.format, false, true)}
                           </td>
                         );
                         cells.push(

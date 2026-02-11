@@ -442,7 +442,13 @@ export function calculateBS(data: FinancialData[]): TableRow[] {
   const 현금및현금성자산 = getAccountValues(map, '현금 및 현금성자산');
   const 직영AR = getAccountValues(map, '직영AR');
   const 대리상AR = getAccountValues(map, '대리상AR');
-  const 재고자산 = getAccountValues(map, '재고자산');
+  const hasInventoryBreakdown = map.has('MLB') || map.has('KIDS') || map.has('DISCOVERY');
+  const MLB = getAccountValues(map, 'MLB');
+  const KIDS = getAccountValues(map, 'KIDS');
+  const DISCOVERY = getAccountValues(map, 'DISCOVERY');
+  const 재고자산 = hasInventoryBreakdown
+    ? MLB.map((v, i) => v + KIDS[i] + DISCOVERY[i])
+    : getAccountValues(map, '재고자산');
   const 선급금본사 = getAccountValues(map, '선급금(본사)');
   const 선급금기타 = getAccountValues(map, '선급금(기타)');
   const 기타유동자산 = getAccountValues(map, '기타 유동자산');
@@ -510,7 +516,14 @@ export function calculateBS(data: FinancialData[]): TableRow[] {
     },
     { account: '직영AR', level: 3, isGroup: false, isCalculated: false, values: 직영AR, format: 'number' },
     { account: '대리상AR', level: 3, isGroup: false, isCalculated: false, values: 대리상AR, format: 'number' },
-    { account: '재고자산', level: 2, isGroup: false, isCalculated: false, values: 재고자산, format: 'number' },
+    ...(hasInventoryBreakdown
+      ? [
+          { account: '재고자산', level: 2, isGroup: true, isCalculated: true, isBold: true, values: 재고자산, format: 'number' as const },
+          { account: 'MLB', level: 3, isGroup: false, isCalculated: false, values: MLB, format: 'number' as const },
+          { account: 'KIDS', level: 3, isGroup: false, isCalculated: false, values: KIDS, format: 'number' as const },
+          { account: 'DISCOVERY', level: 3, isGroup: false, isCalculated: false, values: DISCOVERY, format: 'number' as const },
+        ]
+      : [{ account: '재고자산', level: 2, isGroup: false, isCalculated: false, values: 재고자산, format: 'number' as const }]),
     { account: '선급금(본사)', level: 2, isGroup: false, isCalculated: false, values: 선급금본사, format: 'number' },
     { account: '선급금(기타)', level: 2, isGroup: false, isCalculated: false, values: 선급금기타, format: 'number' },
     { account: '기타 유동자산', level: 2, isGroup: false, isCalculated: false, values: 기타유동자산, format: 'number' },
@@ -598,7 +611,13 @@ export function calculateWorkingCapital(data: FinancialData[]): TableRow[] {
   // 기본 계정 (재무상태표에서 가져옴)
   const 직영AR = getAccountValues(map, '직영AR');
   const 대리상AR = getAccountValues(map, '대리상AR');
-  const 재고자산 = getAccountValues(map, '재고자산');
+  const hasInventoryBreakdown = map.has('MLB') || map.has('KIDS') || map.has('DISCOVERY');
+  const MLB = getAccountValues(map, 'MLB');
+  const KIDS = getAccountValues(map, 'KIDS');
+  const DISCOVERY = getAccountValues(map, 'DISCOVERY');
+  const 재고자산 = hasInventoryBreakdown
+    ? MLB.map((v, i) => v + KIDS[i] + DISCOVERY[i])
+    : getAccountValues(map, '재고자산');
   const 선급금본사 = getAccountValues(map, '선급금(본사)');
   const 본사AP = getAccountValues(map, '본사 AP');
   const 제품AP = getAccountValues(map, '제품 AP');
@@ -659,7 +678,14 @@ export function calculateWorkingCapital(data: FinancialData[]): TableRow[] {
     },
     { account: '직영AR', level: 2, isGroup: false, isCalculated: false, values: 직영AR, format: 'number' },
     { account: '대리상AR', level: 2, isGroup: false, isCalculated: false, values: 대리상AR, format: 'number' },
-    { account: '재고자산', level: 1, isGroup: false, isCalculated: false, values: 재고자산, format: 'number' },
+    ...(hasInventoryBreakdown
+      ? [
+          { account: '재고자산', level: 1, isGroup: true, isCalculated: true, isBold: true, values: 재고자산, format: 'number' as const },
+          { account: 'MLB', level: 2, isGroup: false, isCalculated: false, values: MLB, format: 'number' as const },
+          { account: 'KIDS', level: 2, isGroup: false, isCalculated: false, values: KIDS, format: 'number' as const },
+          { account: 'DISCOVERY', level: 2, isGroup: false, isCalculated: false, values: DISCOVERY, format: 'number' as const },
+        ]
+      : [{ account: '재고자산', level: 1, isGroup: false, isCalculated: false, values: 재고자산, format: 'number' as const }]),
     { account: '본사선급금', level: 1, isGroup: false, isCalculated: false, values: 선급금본사, format: 'number' },
     {
       account: '외상매입금',

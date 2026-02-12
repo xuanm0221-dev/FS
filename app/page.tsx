@@ -207,14 +207,16 @@ export default function Home() {
       setLoading(true);
       setError(null);
 
-      // 1순위: 저장된 경영요약 (GET /api/executive-summary)
+      // 1순위: 저장된 경영요약 (GET /api/executive-summary) — 우측 5개 섹션이 있어야 사용
       try {
         const response = await fetch('/api/executive-summary');
         if (response.ok) {
           const result = await response.json();
-          if (result?.data && result.data.title) {
-            setSummaryData(result.data);
-            localStorage.setItem('executive-summary', JSON.stringify(result.data));
+          const d = result?.data;
+          const hasRightSections = d?.sections && Array.isArray(d.sections.주요성과) && Array.isArray(d.sections.결론);
+          if (d?.title && hasRightSections) {
+            setSummaryData(d);
+            localStorage.setItem('executive-summary', JSON.stringify(d));
             setLoading(false);
             return;
           }
@@ -234,6 +236,9 @@ export default function Home() {
             setLoading(false);
             return;
           }
+        } else {
+          const errBody = await response.json().catch(() => ({}));
+          console.error('경영요약 API 실패:', response.status, errBody);
         }
       } catch (apiErr) {
         console.log('경영요약 API 실패, 캐시/파일에서 로드 시도:', apiErr);
@@ -459,6 +464,7 @@ export default function Home() {
         {activeTab === 0 && (
           <ExecutiveSummary 
             data={summaryData}
+            loadError={error}
             onChange={setSummaryData}
             onReset={resetSummaryData}
             onSaveToServer={async (data, password) => {

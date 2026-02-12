@@ -4,6 +4,7 @@ import { ExecutiveSummaryData } from '@/lib/types';
 
 interface ExecutiveSummaryProps {
   data: ExecutiveSummaryData | null;
+  loadError?: string | null;
   onChange: (data: ExecutiveSummaryData) => void;
   onReset: () => void;
   onSaveToServer?: (data: ExecutiveSummaryData, password?: string) => Promise<{ ok: boolean; requirePassword?: boolean }>;
@@ -13,7 +14,7 @@ const textareaClass = 'w-full p-3 border border-gray-200 rounded-md bg-gray-50/5
 
 const bulletLine = (s: string) => s.replace(/^[•·]\s*/, '');
 
-export default function ExecutiveSummary({ data, onChange, onReset, onSaveToServer }: ExecutiveSummaryProps) {
+export default function ExecutiveSummary({ data, loadError, onChange, onReset, onSaveToServer }: ExecutiveSummaryProps) {
   const [editMode, setEditMode] = useState(false);
   const [showPasswordModal, setShowPasswordModal] = useState(false);
   const [serverSavePassword, setServerSavePassword] = useState('');
@@ -33,7 +34,11 @@ export default function ExecutiveSummary({ data, onChange, onReset, onSaveToServ
   if (!data) {
     return (
       <div className="p-6 text-center">
-        <div className="text-gray-500">경영요약 데이터를 불러오는 중...</div>
+        {loadError ? (
+          <div className="text-red-600">{loadError}</div>
+        ) : (
+          <div className="text-gray-500">경영요약 데이터를 불러오는 중...</div>
+        )}
       </div>
     );
   }

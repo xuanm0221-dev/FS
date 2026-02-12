@@ -11,7 +11,7 @@ function normalizeStoredSummary(stored: ExecutiveSummaryData | null): ExecutiveS
   let changed = false;
   for (const key of RIGHT_SECTION_KEYS) {
     if (!Array.isArray(sections[key])) {
-      (sections as Record<string, string[]>)[key] = [];
+      (sections as unknown as Record<string, string[]>)[key] = [];
       changed = true;
     }
   }

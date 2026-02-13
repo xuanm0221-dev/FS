@@ -54,28 +54,27 @@ export default function Home() {
   const [wcRemarks, setWcRemarks] = useState<Map<string, string>>(new Map());
   const [wcRemarksAuto, setWcRemarksAuto] = useState<{ [key: string]: string } | null>(null);
 
-  // 비고 데이터 로드
-  useEffect(() => {
-    const loadRemarks = async (type: 'bs' | 'wc') => {
-      try {
-        const response = await fetch(`/api/remarks?type=${type}`);
-        if (response.ok) {
-          const data = await response.json();
-          if (data.remarks) {
-            const remarksMap = new Map<string, string>(Object.entries(data.remarks) as [string, string][]);
-            if (type === 'bs') {
-              setBsRemarks(remarksMap);
-            } else {
-              setWcRemarks(remarksMap);
-            }
+  // 비고 데이터 로드 (재무상태표 탭 진입 시 및 초기값으로 리셋 후 호출)
+  const loadRemarks = async (type: 'bs' | 'wc') => {
+    try {
+      const response = await fetch(`/api/remarks?type=${type}`);
+      if (response.ok) {
+        const data = await response.json();
+        if (data.remarks) {
+          const remarksMap = new Map<string, string>(Object.entries(data.remarks) as [string, string][]);
+          if (type === 'bs') {
+            setBsRemarks(remarksMap);
+          } else {
+            setWcRemarks(remarksMap);
           }
         }
-      } catch (error) {
-        console.error('비고 로드 실패:', error);
       }
-    };
+    } catch (error) {
+      console.error('비고 로드 실패:', error);
+    }
+  };
 
-    // 재무상태표 탭일 때만 로드
+  useEffect(() => {
     if (activeTab === 2) {
       loadRemarks('bs');
       loadRemarks('wc');
@@ -114,6 +113,66 @@ export default function Home() {
       }, 1000); // 1초 디바운스
     };
   }, []);
+
+  // 비고 초기값으로 리셋 (KV 비우고 다시 로드)
+  const resetRemarksData = async () => {
+    try {
+      setError(null);
+      const [resBs, resWc] = await Promise.all([
+        fetch('/api/remarks', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ type: 'bs', reset: true }),
+        }),
+        fetch('/api/remarks', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ type: 'wc', reset: true }),
+        }),
+      ]);
+      const dataBs = await resBs.json();
+      const dataWc = await resWc.json();
+      if (!dataBs.success || !dataWc.success) {
+        setError('비고 초기값 불러오기에 실패했습니다.');
+        return;
+      }
+      await loadRemarks('bs');
+      await loadRemarks('wc');
+      alert('초기값으로 리셋되었습니다.');
+    } catch (err) {
+      console.error(err);
+      setError('비고 초기값 불러오기에 실패했습니다.');
+    }
+  };
+
+  // 비고 일괄 저장
+  const saveRemarksToServer = async () => {
+    try {
+      setError(null);
+      const [resBs, resWc] = await Promise.all([
+        fetch('/api/remarks', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ type: 'bs', remarks: Object.fromEntries(bsRemarks) }),
+        }),
+        fetch('/api/remarks', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ type: 'wc', remarks: Object.fromEntries(wcRemarks) }),
+        }),
+      ]);
+      const dataBs = await resBs.json();
+      const dataWc = await resWc.json();
+      if (!dataBs.success || !dataWc.success) {
+        setError('비고 저장에 실패했습니다.');
+        return;
+      }
+      alert('저장되었습니다.');
+    } catch (err) {
+      console.error(err);
+      setError('비고 저장에 실패했습니다.');
+    }
+  };
 
   // 브랜드 목록
   const brands = [
@@ -515,8 +574,30 @@ export default function Home() {
         {activeTab === 2 && (
           <div>
             <div className="bg-gray-100 border-b border-gray-300">
-              <div className="flex items-center gap-4 px-6 py-3">
+              <div className="flex justify-between items-center gap-4 px-6 py-3">
                 <YearTabs years={[2024, 2025, 2026]} activeYear={bsYear} onChange={setBsYear} />
+                {(bsYear === 2025 || bsYear === 2026) && (
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      onClick={saveRemarksToServer}
+                      className="px-4 py-2 text-sm font-medium rounded-lg bg-blue-600 text-white hover:bg-blue-700 transition-colors shadow-sm"
+                    >
+                      저장하기
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (confirm('비고를 초기값으로 되돌리시겠습니까?')) {
+                          resetRemarksData();
+                        }
+                      }}
+                      className="px-4 py-2 text-sm font-medium rounded-lg bg-gray-600 text-white hover:bg-gray-700 transition-colors shadow-sm"
+                    >
+                      초기값으로
+                    </button>
+                  </div>
+                )}
               </div>
             </div>
             {loading && <div className="p-6 text-center">로딩 중...</div>}

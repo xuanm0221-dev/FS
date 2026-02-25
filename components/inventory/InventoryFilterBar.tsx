@@ -22,38 +22,39 @@ interface Props {
   year: number;
   brand: Brand;
   growthRate: number;
-  sellInExpanded: boolean;
-  sellOutExpanded: boolean;
   onYearChange: (y: number) => void;
   onBrandChange: (b: Brand) => void;
   onGrowthRateChange: (v: number) => void;
-  onSellInToggle: () => void;
-  onSellOutToggle: () => void;
   snapshotSaved: boolean;
   snapshotSavedAt: string | null;
   recalcLoading: boolean;
   canSave: boolean;
   onSave: () => void;
   onRecalc: (mode: 'current' | 'annual') => void;
+  /** 2026 재고자산표 편집 모드 (수정 클릭 시 true) */
+  editMode?: boolean;
+  /** 수정 버튼 클릭 시 호출 (편집 모드 진입) */
+  onEditModeEnter?: () => void;
+  /** 초기값 버튼 클릭 시 호출 (편집값 리셋) */
+  onResetToDefault?: () => void;
 }
 
 export default function InventoryFilterBar({
   year,
   brand,
   growthRate,
-  sellInExpanded,
-  sellOutExpanded,
   onYearChange,
   onBrandChange,
   onGrowthRateChange,
-  onSellInToggle,
-  onSellOutToggle,
   snapshotSaved,
   snapshotSavedAt,
   recalcLoading,
   canSave,
   onSave,
   onRecalc,
+  editMode = false,
+  onEditModeEnter,
+  onResetToDefault,
 }: Props) {
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
@@ -177,34 +178,54 @@ export default function InventoryFilterBar({
 
         <div className="h-4 w-px bg-gray-300" />
 
-        {/* 월별 보기 */}
-        <div className="flex items-center gap-2">
-          <span className="text-xs text-gray-400 whitespace-nowrap">월별 보기:</span>
-          <button
-            onClick={onSellInToggle}
-            className={`flex items-center gap-1 px-3 py-1 text-xs font-medium rounded border transition-colors ${
-              sellInExpanded
-                ? 'bg-blue-600 text-white border-blue-600'
-                : 'bg-white text-gray-600 border-gray-300 hover:border-blue-400'
-            }`}
-          >
-            <span>{sellInExpanded ? '▼' : '▶'}</span>
-            <span>Sell-in</span>
-          </button>
-          <button
-            onClick={onSellOutToggle}
-            className={`flex items-center gap-1 px-3 py-1 text-xs font-medium rounded border transition-colors ${
-              sellOutExpanded
-                ? 'bg-blue-600 text-white border-blue-600'
-                : 'bg-white text-gray-600 border-gray-300 hover:border-blue-400'
-            }`}
-          >
-            <span>{sellOutExpanded ? '▼' : '▶'}</span>
-            <span>Sell-out</span>
-          </button>
-        </div>
-
-        <div className="h-4 w-px bg-gray-300" />
+        {/* 2026 전용: 수정 · 저장 · 초기값 */}
+        {year === 2026 && (onEditModeEnter || onResetToDefault) && (
+          <>
+            <button
+              type="button"
+              onClick={onEditModeEnter}
+              className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded border transition-colors ${
+                editMode
+                  ? 'bg-blue-50 text-blue-700 border-blue-300'
+                  : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50 hover:border-blue-400'
+              }`}
+              title="재고자산표 편집 (상품매입·대리상출고·재고주수)"
+            >
+              수정
+            </button>
+            <button
+              type="button"
+              onClick={onSave}
+              disabled={!canSave || recalcLoading}
+              className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded border transition-colors ${
+                canSave && !recalcLoading
+                  ? 'bg-emerald-50 text-emerald-800 border-emerald-400 hover:bg-emerald-100'
+                  : 'bg-gray-100 text-gray-400 border-gray-200 cursor-not-allowed'
+              }`}
+              title="편집 내용을 포함해 현재 데이터를 저장합니다"
+            >
+              {recalcLoading ? (
+                <svg className="animate-spin w-3 h-3" viewBox="0 0 12 12" fill="none">
+                  <circle cx="6" cy="6" r="5" stroke="currentColor" strokeWidth="2" strokeDasharray="8 8" />
+                </svg>
+              ) : (
+                <svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor" className="flex-shrink-0">
+                  <path d="M10 1H3L1 3v8h10V1zm-4 9a2 2 0 1 1 0-4 2 2 0 0 1 0 4zM3 1v3h5V1H3z"/>
+                </svg>
+              )}
+              저장
+            </button>
+            <button
+              type="button"
+              onClick={onResetToDefault}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded border border-gray-300 bg-white text-gray-700 hover:bg-gray-50 hover:border-gray-400 transition-colors"
+              title="편집값을 초기값으로 되돌립니다"
+            >
+              초기값
+            </button>
+            <div className="h-4 w-px bg-gray-300" />
+          </>
+        )}
 
         {/* 스냅샷 저장 / 저장완료+재계산 드롭다운 */}
         {!snapshotSaved ? (

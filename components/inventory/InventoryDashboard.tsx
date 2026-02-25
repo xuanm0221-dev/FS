@@ -1,12 +1,13 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Brand, InventoryApiResponse } from '@/lib/inventory-types';
+import { Brand, InventoryApiResponse, AccKey, ACC_KEYS, RowKey } from '@/lib/inventory-types';
 import { MonthlyStockResponse } from '@/lib/inventory-monthly-types';
 import { RetailSalesResponse } from '@/lib/retail-sales-types';
 import type { ShipmentSalesResponse } from '@/app/api/inventory/shipment-sales/route';
 import type { PurchaseResponse } from '@/app/api/inventory/purchase/route';
 import { buildTableDataFromMonthly } from '@/lib/build-inventory-from-monthly';
+import { applyAccTargetWoiOverlay, applyHqSellInSellOutPlanOverlay } from '@/lib/inventory-calc';
 import {
   saveSnapshot,
   loadSnapshot,
@@ -15,6 +16,13 @@ import {
   type SnapshotData,
 } from '@/lib/inventory-snapshot';
 import { stripPlanMonths, applyPlanToSnapshot, PLAN_FROM_MONTH } from '@/lib/retail-plan';
+import {
+  BRANDS_TO_AGGREGATE,
+  aggregateMonthlyStock,
+  aggregateRetailSales,
+  aggregateShipmentSales,
+  aggregatePurchase,
+} from '@/lib/aggregate-inventory-by-brand';
 import InventoryFilterBar from './InventoryFilterBar';
 import InventoryTable from './InventoryTable';
 import InventoryMonthlyTable, { TableData } from './InventoryMonthlyTable';
@@ -36,8 +44,6 @@ export default function InventoryDashboard() {
   const [year, setYear] = useState<number>(2026);
   const [brand, setBrand] = useState<Brand>('전체');
   const [growthRate, setGrowthRate] = useState<number>(5);
-  const [sellInExpanded, setSellInExpanded] = useState<boolean>(false);
-  const [sellOutExpanded, setSellOutExpanded] = useState<boolean>(false);
 
   // 기존 Sell-in/Sell-out 표 데이터
   const [data, setData] = useState<InventoryApiResponse | null>(null);
@@ -74,8 +80,31 @@ export default function InventoryDashboard() {
   const [snapshotSaved, setSnapshotSaved] = useState(false);
   const [snapshotSavedAt, setSnapshotSavedAt] = useState<string | null>(null);
   const [recalcLoading, setRecalcLoading] = useState(false);
+  // 2026 ACC 기말 목표 재고주수 (대리상/본사별 신발·모자·가방·기타)
+  const [accTargetWoiDealer, setAccTargetWoiDealer] = useState<Record<AccKey, number>>({
+    신발: 29, 모자: 29, 가방: 25, 기타: 39,
+  });
+  const [accTargetWoiHq, setAccTargetWoiHq] = useState<Record<AccKey, number>>({
+    신발: 10, 모자: 8, 가방: 10, 기타: 10,
+  });
+  const accTargetWoiDealerRef = useRef(accTargetWoiDealer);
+  const accTargetWoiHqRef = useRef(accTargetWoiHq);
+  useEffect(() => {
+    accTargetWoiDealerRef.current = accTargetWoiDealer;
+  }, [accTargetWoiDealer]);
+  useEffect(() => {
+    accTargetWoiHqRef.current = accTargetWoiHq;
+  }, [accTargetWoiHq]);
+  // 2026 본사 상품매입·대리상출고 편집 계획 (연간 K). 2025는 사용하지 않음.
+  const [hqSellInPlan, setHqSellInPlan] = useState<Partial<Record<RowKey, number>>>({});
+  const [hqSellOutPlan, setHqSellOutPlan] = useState<Partial<Record<RowKey, number>>>({});
+  // 2026 재고자산표 편집 모드 (수정 클릭 시에만 편집 가능한 박스 표시)
+  const [editMode, setEditMode] = useState(false);
   // 2026 계획월 계산용 2025 실적 보관 (API 응답에 포함됨)
   const retail2025Ref = useRef<RetailSalesResponse['retail2025'] | null>(null);
+
+  const DEFAULT_ACC_WOI_DEALER: Record<AccKey, number> = { 신발: 29, 모자: 29, 가방: 25, 기타: 39 };
+  const DEFAULT_ACC_WOI_HQ: Record<AccKey, number> = { 신발: 10, 모자: 8, 가방: 10, 기타: 10 };
 
   // ── 기존 표 fetch ──
   const fetchData = useCallback(async () => {
@@ -102,12 +131,22 @@ export default function InventoryDashboard() {
     setMonthlyLoading(true);
     setMonthlyError(null);
     try {
-      const params = new URLSearchParams({ year: String(year), brand });
-      const res = await fetch(`/api/inventory/monthly-stock?${params}`);
-      if (!res.ok) throw new Error('월별 데이터 로드 실패');
-      const json = await res.json();
-      if (json.error) throw new Error(json.error);
-      setMonthlyData(json);
+      if (brand === '전체') {
+        const ress = await Promise.all(
+          BRANDS_TO_AGGREGATE.map((b) =>
+            fetch(`/api/inventory/monthly-stock?${new URLSearchParams({ year: String(year), brand: b })}`),
+          ),
+        );
+        const jsons = await Promise.all(ress.map((r) => r.json()));
+        for (const j of jsons) if (j.error) throw new Error(j.error);
+        setMonthlyData(aggregateMonthlyStock(jsons));
+      } else {
+        const res = await fetch(`/api/inventory/monthly-stock?${new URLSearchParams({ year: String(year), brand })}`);
+        if (!res.ok) throw new Error('월별 데이터 로드 실패');
+        const json = await res.json();
+        if (json.error) throw new Error(json.error);
+        setMonthlyData(json);
+      }
     } catch (e) {
       setMonthlyError(String(e));
     } finally {
@@ -120,14 +159,25 @@ export default function InventoryDashboard() {
     setRetailLoading(true);
     setRetailError(null);
     try {
-      const params = new URLSearchParams({ year: String(year), brand, growthRate: String(growthRate) });
-      const res = await fetch(`/api/inventory/retail-sales?${params}`);
-      if (!res.ok) throw new Error('리테일 매출 데이터 로드 실패');
-      const json: RetailSalesResponse = await res.json();
-      if ((json as { error?: string }).error) throw new Error((json as { error?: string }).error);
-      // 2026 응답에는 retail2025 포함 → 스냅샷 저장용으로 보관
-      if (json.retail2025) retail2025Ref.current = json.retail2025;
-      setRetailData(json);
+      if (brand === '전체') {
+        const ress = await Promise.all(
+          BRANDS_TO_AGGREGATE.map((b) =>
+            fetch(`/api/inventory/retail-sales?${new URLSearchParams({ year: String(year), brand: b, growthRate: String(growthRate) })}`),
+          ),
+        );
+        const jsons: RetailSalesResponse[] = await Promise.all(ress.map((r) => r.json()));
+        for (const j of jsons) if ((j as { error?: string }).error) throw new Error((j as { error?: string }).error);
+        const aggregated = aggregateRetailSales(jsons);
+        if (aggregated.retail2025) retail2025Ref.current = aggregated.retail2025;
+        setRetailData(aggregated);
+      } else {
+        const res = await fetch(`/api/inventory/retail-sales?${new URLSearchParams({ year: String(year), brand, growthRate: String(growthRate) })}`);
+        if (!res.ok) throw new Error('리테일 매출 데이터 로드 실패');
+        const json: RetailSalesResponse = await res.json();
+        if ((json as { error?: string }).error) throw new Error((json as { error?: string }).error);
+        if (json.retail2025) retail2025Ref.current = json.retail2025;
+        setRetailData(json);
+      }
     } catch (e) {
       setRetailError(String(e));
     } finally {
@@ -140,11 +190,21 @@ export default function InventoryDashboard() {
     setShipmentLoading(true);
     setShipmentError(null);
     try {
-      const params = new URLSearchParams({ year: String(year), brand });
-      const res = await fetch(`/api/inventory/shipment-sales?${params}`);
-      const json = await res.json();
-      if (!res.ok || json.error) throw new Error(json.error ?? '출고매출 데이터 로드 실패');
-      setShipmentData(json);
+      if (brand === '전체') {
+        const ress = await Promise.all(
+          BRANDS_TO_AGGREGATE.map((b) =>
+            fetch(`/api/inventory/shipment-sales?${new URLSearchParams({ year: String(year), brand: b })}`),
+          ),
+        );
+        const jsons = await Promise.all(ress.map((r) => r.json()));
+        for (const j of jsons) if (j.error) throw new Error(j.error ?? '출고매출 데이터 로드 실패');
+        setShipmentData(aggregateShipmentSales(jsons));
+      } else {
+        const res = await fetch(`/api/inventory/shipment-sales?${new URLSearchParams({ year: String(year), brand })}`);
+        const json = await res.json();
+        if (!res.ok || json.error) throw new Error(json.error ?? '출고매출 데이터 로드 실패');
+        setShipmentData(json);
+      }
     } catch (e) {
       setShipmentError(String(e));
     } finally {
@@ -157,11 +217,21 @@ export default function InventoryDashboard() {
     setPurchaseLoading(true);
     setPurchaseError(null);
     try {
-      const params = new URLSearchParams({ year: String(year), brand });
-      const res = await fetch(`/api/inventory/purchase?${params}`);
-      const json = await res.json();
-      if (!res.ok || json.error) throw new Error(json.error ?? '매입상품 데이터 로드 실패');
-      setPurchaseData(json);
+      if (brand === '전체') {
+        const ress = await Promise.all(
+          BRANDS_TO_AGGREGATE.map((b) =>
+            fetch(`/api/inventory/purchase?${new URLSearchParams({ year: String(year), brand: b })}`),
+          ),
+        );
+        const jsons = await Promise.all(ress.map((r) => r.json()));
+        for (const j of jsons) if (j.error) throw new Error(j.error ?? '매입상품 데이터 로드 실패');
+        setPurchaseData(aggregatePurchase(jsons));
+      } else {
+        const res = await fetch(`/api/inventory/purchase?${new URLSearchParams({ year: String(year), brand })}`);
+        const json = await res.json();
+        if (!res.ok || json.error) throw new Error(json.error ?? '매입상품 데이터 로드 실패');
+        setPurchaseData(json);
+      }
     } catch (e) {
       setPurchaseError(String(e));
     } finally {
@@ -171,13 +241,26 @@ export default function InventoryDashboard() {
 
   useEffect(() => { fetchData(); }, [fetchData]);
 
-  // 스냅샷이 있으면 API 생략, 없으면 4개 API 호출
+  // 스냅샷이 있으면 API 생략, 없으면 4개 API 호출 (전체 탭은 스냅샷 미사용, 항상 API 집계)
   useEffect(() => {
+    if (brand === '전체') {
+      setSnapshotSaved(false);
+      setSnapshotSavedAt(null);
+      fetchMonthlyData();
+      fetchRetailData();
+      fetchShipmentData();
+      fetchPurchaseData();
+      return;
+    }
     const snap = loadSnapshot(year, brand);
     if (snap) {
       setMonthlyData(snap.monthly);
       setShipmentData(snap.shipment);
       setPurchaseData(snap.purchase);
+      if (snap.hqSellInPlan && Object.keys(snap.hqSellInPlan).length) setHqSellInPlan(snap.hqSellInPlan);
+      if (snap.hqSellOutPlan && Object.keys(snap.hqSellOutPlan).length) setHqSellOutPlan(snap.hqSellOutPlan);
+      if (snap.accTargetWoiDealer) setAccTargetWoiDealer(snap.accTargetWoiDealer);
+      if (snap.accTargetWoiHq) setAccTargetWoiHq(snap.accTargetWoiHq);
       // 계획월은 현재 growthRate로 동적 재계산
       if (year === 2026 && snap.planFromMonth && snap.retail2025) {
         retail2025Ref.current = snap.retail2025;
@@ -201,6 +284,10 @@ export default function InventoryDashboard() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [year, brand]); // growthRate는 의도적으로 제외
 
+  useEffect(() => {
+    setEditMode(false);
+  }, [year, brand]);
+
   // growthRate 변경 시 — 스냅샷 로드 상태이면 계획월만 재계산 (API 없음)
   useEffect(() => {
     if (!snapshotSaved) return;
@@ -213,6 +300,7 @@ export default function InventoryDashboard() {
   }, [growthRate]);
 
   // 2025·2026일 때 상단 표는 월별 재고잔액 + 리테일 매출 + 출고매출 + 매입상품으로 구성
+  // 2026일 때만 ACC 목표 재고주수 오버레이 적용
   const topTableData = useMemo(() => {
     if (
       (year !== 2025 && year !== 2026) ||
@@ -225,17 +313,63 @@ export default function InventoryDashboard() {
     ) {
       return null;
     }
-    return buildTableDataFromMonthly(
+    const built = buildTableDataFromMonthly(
       monthlyData,
       retailData,
       shipmentData,
       purchaseData ?? undefined,
       year,
     );
-  }, [year, monthlyData, retailData, shipmentData, purchaseData]);
+    if (year === 2026 && brand !== '전체') {
+      const withWoi = applyAccTargetWoiOverlay(
+        built.dealer,
+        built.hq,
+        retailData,
+        accTargetWoiDealer,
+        accTargetWoiHq,
+        year,
+      );
+      return applyHqSellInSellOutPlanOverlay(
+        withWoi.dealer,
+        withWoi.hq,
+        hqSellInPlan,
+        hqSellOutPlan,
+        year,
+      );
+    }
+    return built;
+  }, [year, brand, monthlyData, retailData, shipmentData, purchaseData, accTargetWoiDealer, accTargetWoiHq, hqSellInPlan, hqSellOutPlan]);
 
   const dealerTableData = topTableData?.dealer ?? data?.dealer ?? null;
   const hqTableData = topTableData?.hq ?? data?.hq ?? null;
+
+  // 2026 ACC 행 재고주수 편집 시 상태 반영 (표 셀 또는 기본값 블록과 연동)
+  const handleWoiChange = useCallback((tableType: 'dealer' | 'hq', rowKey: string, newWoi: number) => {
+    if (!ACC_KEYS.includes(rowKey as AccKey)) return;
+    if (tableType === 'dealer') {
+      setAccTargetWoiDealer((prev) => {
+        const next = { ...prev, [rowKey]: newWoi };
+        accTargetWoiDealerRef.current = next;
+        return next;
+      });
+    } else {
+      setAccTargetWoiHq((prev) => {
+        const next = { ...prev, [rowKey]: newWoi };
+        accTargetWoiHqRef.current = next;
+        return next;
+      });
+    }
+  }, []);
+
+  // 2026 본사 상품매입(연간) 편집
+  const handleHqSellInChange = useCallback((rowKey: RowKey, newSellInTotal: number) => {
+    setHqSellInPlan((prev) => ({ ...prev, [rowKey]: newSellInTotal }));
+  }, []);
+
+  // 2026 본사 대리상출고(연간) 편집 — 대리상 표 Sell-in에 자동 반영
+  const handleHqSellOutChange = useCallback((rowKey: RowKey, newSellOutTotal: number) => {
+    setHqSellOutPlan((prev) => ({ ...prev, [rowKey]: newSellOutTotal }));
+  }, []);
 
   // ── 스냅샷 저장 ──
   const handleSave = useCallback(() => {
@@ -253,10 +387,26 @@ export default function InventoryDashboard() {
       savedAt: new Date().toISOString(),
       planFromMonth: retailData.planFromMonth,
     };
+    if (year === 2026) {
+      snap.hqSellInPlan = Object.keys(hqSellInPlan).length ? hqSellInPlan : undefined;
+      snap.hqSellOutPlan = Object.keys(hqSellOutPlan).length ? hqSellOutPlan : undefined;
+      snap.accTargetWoiDealer = accTargetWoiDealerRef.current;
+      snap.accTargetWoiHq = accTargetWoiHqRef.current;
+    }
     saveSnapshot(year, brand, snap);
     setSnapshotSaved(true);
     setSnapshotSavedAt(snap.savedAt);
-  }, [year, brand, monthlyData, retailData, shipmentData, purchaseData]);
+    setEditMode(false);
+  }, [year, brand, monthlyData, retailData, shipmentData, purchaseData, hqSellInPlan, hqSellOutPlan]);
+
+  // ── 2026 편집값 초기값 리셋 ──
+  const handleResetToDefault = useCallback(() => {
+    setHqSellInPlan({});
+    setHqSellOutPlan({});
+    setAccTargetWoiDealer(DEFAULT_ACC_WOI_DEALER);
+    setAccTargetWoiHq(DEFAULT_ACC_WOI_HQ);
+    setEditMode(false);
+  }, []);
 
   // ── 재계산 ──
   const handleRecalc = useCallback(async (mode: 'current' | 'annual') => {
@@ -310,19 +460,18 @@ export default function InventoryDashboard() {
         year={year}
         brand={brand}
         growthRate={growthRate}
-        sellInExpanded={sellInExpanded}
-        sellOutExpanded={sellOutExpanded}
         onYearChange={setYear}
         onBrandChange={setBrand}
         onGrowthRateChange={setGrowthRate}
-        onSellInToggle={() => setSellInExpanded((v) => !v)}
-        onSellOutToggle={() => setSellOutExpanded((v) => !v)}
         snapshotSaved={snapshotSaved}
         snapshotSavedAt={snapshotSavedAt}
         recalcLoading={recalcLoading}
         onSave={handleSave}
         onRecalc={handleRecalc}
         canSave={!!(monthlyData && retailData && shipmentData && purchaseData)}
+        editMode={year === 2026 && brand !== '전체' ? editMode : false}
+        onEditModeEnter={year === 2026 && brand !== '전체' ? () => setEditMode(true) : undefined}
+        onResetToDefault={year === 2026 && brand !== '전체' ? handleResetToDefault : undefined}
       />
 
       <div className="px-6 py-5">
@@ -336,36 +485,37 @@ export default function InventoryDashboard() {
           <div className="py-10 text-center text-red-500 text-sm">{error}</div>
         )}
         {dealerTableData && hqTableData && (
-          <div className="flex flex-wrap gap-6 items-start">
-            <div className="min-w-0 flex-1" style={{ minWidth: '320px' }}>
+          <>
+            <div className="flex flex-wrap gap-6 items-stretch">
+            <div className="min-w-0 flex-1 flex flex-col" style={{ minWidth: '320px' }}>
               <InventoryTable
                 title="대리상 (CNY K)"
-                titleBg="#f59e0b"
                 data={dealerTableData!}
                 year={year}
+                editMode={year === 2026 && brand !== '전체' ? editMode : false}
                 sellInLabel="Sell-in"
                 sellOutLabel="Sell-out"
-                sellInExpanded={sellInExpanded}
-                sellOutExpanded={sellOutExpanded}
                 tableType="dealer"
-                onWoiChange={undefined}
+                onWoiChange={year === 2026 && brand !== '전체' ? handleWoiChange : undefined}
               />
             </div>
-            <div className="min-w-0 flex-1" style={{ minWidth: '320px' }}>
+            <div className="min-w-0 flex-1 flex flex-col" style={{ minWidth: '320px' }}>
               <InventoryTable
                 title="본사 (CNY K)"
-                titleBg="#f59e0b"
+                titleNote={year === 2026 && brand !== '전체' ? '편집가능: 의류 상품매입, 대리상출고 | ACC: 재고주수' : undefined}
                 data={hqTableData!}
                 year={year}
+                editMode={year === 2026 && brand !== '전체' ? editMode : false}
                 sellInLabel="상품매입"
                 sellOutLabel="대리상출고"
-                sellInExpanded={sellInExpanded}
-                sellOutExpanded={sellOutExpanded}
                 tableType="hq"
-                onWoiChange={undefined}
+                onWoiChange={year === 2026 && brand !== '전체' ? handleWoiChange : undefined}
+                onHqSellInChange={year === 2026 && brand !== '전체' ? handleHqSellInChange : undefined}
+                onHqSellOutChange={year === 2026 && brand !== '전체' ? handleHqSellOutChange : undefined}
               />
             </div>
           </div>
+          </>
         )}
 
         {/* ── 월별 재고잔액 표 ── */}

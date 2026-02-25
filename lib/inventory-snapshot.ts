@@ -4,6 +4,7 @@ import type { MonthlyStockResponse, MonthlyStockRow } from './inventory-monthly-
 import type { RetailSalesResponse, RetailSalesRow } from './retail-sales-types';
 import type { ShipmentSalesResponse } from '@/app/api/inventory/shipment-sales/route';
 import type { PurchaseResponse } from '@/app/api/inventory/purchase/route';
+import type { RowKey, AccKey } from './inventory-types';
 
 export interface SnapshotData {
   /** 월별 재고잔액 — 실적월만 (미래월 null) */
@@ -20,6 +21,14 @@ export interface SnapshotData {
   savedAt: string;
   /** 계획 시작 월 (1-based). 2026: 2, 2025: undefined */
   planFromMonth?: number;
+  /** 2026 본사 상품매입(연간 K) 편집값 — 저장 시 포함 */
+  hqSellInPlan?: Partial<Record<RowKey, number>>;
+  /** 2026 본사 대리상출고(연간 K) 편집값 — 저장 시 포함 */
+  hqSellOutPlan?: Partial<Record<RowKey, number>>;
+  /** 2026 대리상 ACC 목표 재고주수 — 저장 시 포함 */
+  accTargetWoiDealer?: Record<AccKey, number>;
+  /** 2026 본사 ACC 목표 재고주수 — 저장 시 포함 */
+  accTargetWoiHq?: Record<AccKey, number>;
 }
 
 const snapshotKey = (year: number, brand: string) =>

@@ -1,4 +1,5 @@
-import { InventoryRow, InventoryRowRaw, InventoryTableData, RowKey } from './inventory-types';
+import { InventoryRow, InventoryRowRaw, InventoryTableData, RowKey, AccKey } from './inventory-types';
+import type { RetailSalesResponse } from './retail-sales-types';
 
 const SEASON_KEYS: RowKey[] = ['당년F', '당년S', '1년차', '2년차', '차기시즌', '과시즌'];
 const ACC_KEYS: RowKey[] = ['신발', '모자', '가방', '기타'];
@@ -50,6 +51,9 @@ function calcRow(raw: InventoryRowRaw, yearDays: number): InventoryRow {
   const weeklyRate = woiSellOutTotal / (yearDays / 7);
   const woi = weeklyRate > 0 ? raw.closing / weeklyRate : 0;
 
+  const hqSales = raw.hqSales;
+  const hqSalesTotal = hqSales ? hqSales.reduce((s, v) => s + v, 0) : undefined;
+
   return {
     key: raw.key,
     label: LABELS[raw.key] ?? raw.key,
@@ -66,6 +70,7 @@ function calcRow(raw: InventoryRowRaw, yearDays: number): InventoryRow {
     sellThrough,
     woi,
     woiSellOut,
+    ...(hqSales && { hqSales, hqSalesTotal }),
   };
 }
 
@@ -88,6 +93,12 @@ function calcSubtotal(
   const weeklyRate = woiSellOutTotal / (yearDays / 7);
   const woi = weeklyRate > 0 ? closing / weeklyRate : 0;
 
+  const hasHqSales = rows.every((r) => r.hqSales != null);
+  const hqSales = hasHqSales
+    ? rows.reduce((acc, r) => sumArr(acc, r.hqSales!), new Array(12).fill(0))
+    : undefined;
+  const hqSalesTotal = hqSales ? hqSales.reduce((s, v) => s + v, 0) : undefined;
+
   return {
     key,
     label: LABELS[key] ?? key,
@@ -104,6 +115,7 @@ function calcSubtotal(
     sellThrough,
     woi,
     woiSellOut,
+    ...(hqSales != null && hqSalesTotal != null && { hqSales, hqSalesTotal }),
   };
 }
 
@@ -149,19 +161,285 @@ export function formatWoi(value: number): string {
   return `${value.toFixed(1)}주`;
 }
 
+function calcYearDays(year: number): number {
+  return (year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0)) ? 366 : 365;
+}
+
+/** retailData 월별 합 → 연간 리테일(K). API는 1위안 단위이므로 /1000 */
+function getAnnualRetailK(rows: { key: string; monthly?: (number | null)[] | null }[], key: string): number {
+  const row = rows.find((r) => r.key === key);
+  if (!row) return 0;
+  return (row.monthly ?? []).reduce<number>((s, v) => s + (v ?? 0), 0) / 1000;
+}
+
+/** 목표 기말에 맞춰 sellInTotal 역산 후 월별 비율로 재분배 */
+function applyTargetClosingToAccRow(
+  row: InventoryRow,
+  targetClosing: number,
+  targetWoi: number,
+  yearDays: number
+): InventoryRow {
+  const newSellInTotal = targetClosing + row.sellOutTotal - row.opening;
+  let sellIn: number[];
+  const prevTotal = row.sellInTotal;
+  if (newSellInTotal <= 0) {
+    sellIn = new Array(12).fill(0);
+  } else if (prevTotal > 0) {
+    const scale = newSellInTotal / prevTotal;
+    sellIn = row.sellIn.map((v) => Math.round(v * scale));
+    const sum = sellIn.reduce((s, v) => s + v, 0);
+    if (sum !== newSellInTotal) sellIn[11] += newSellInTotal - sum;
+  } else {
+    sellIn = new Array(12).fill(0);
+    const perMonth = Math.floor(newSellInTotal / 12);
+    for (let i = 0; i < 12; i++) sellIn[i] = perMonth;
+    sellIn[11] += newSellInTotal - perMonth * 12;
+  }
+  const delta = targetClosing - row.opening;
+  const stDenom = sellThroughDenominator(row.key, row.opening, newSellInTotal);
+  const sellThrough = stDenom > 0 ? (row.sellOutTotal / stDenom) * 100 : 0;
+  return {
+    ...row,
+    sellIn,
+    sellInTotal: newSellInTotal,
+    closing: targetClosing,
+    delta,
+    sellThrough,
+    woi: targetWoi,
+  };
+}
+
+/**
+ * 2026년 ACC만: 목표 재고주수 × 주간매출 → 기말 목표 재고 반영
+ * - 대리상 주간매출 = 대리상 연간 리테일(K) / (yearDays/7)
+ * - 본사 주간매출 = (대리상+본사) 연간 리테일(K) / (yearDays/7)
+ */
+export function applyAccTargetWoiOverlay(
+  dealer: InventoryTableData,
+  hq: InventoryTableData,
+  retailData: RetailSalesResponse,
+  accTargetWoiDealer: Record<AccKey, number>,
+  accTargetWoiHq: Record<AccKey, number>,
+  year: number
+): { dealer: InventoryTableData; hq: InventoryTableData } {
+  if (year !== 2026) return { dealer, hq };
+  const yearDays = calcYearDays(year);
+
+  const dealerByKey = Object.fromEntries(
+    dealer.rows.filter((r) => r.isLeaf).map((r) => [r.key, r])
+  ) as Record<string, InventoryRow>;
+  const hqByKey = Object.fromEntries(
+    hq.rows.filter((r) => r.isLeaf).map((r) => [r.key, r])
+  ) as Record<string, InventoryRow>;
+
+  function scaleSellToTotal(sell: number[], newTotal: number): number[] {
+    const prevTotal = sell.reduce((s, v) => s + v, 0);
+    if (newTotal <= 0) return new Array(12).fill(0);
+    if (prevTotal > 0) {
+      const scale = newTotal / prevTotal;
+      const out = sell.map((v) => Math.round(v * scale));
+      const sum = out.reduce((s, v) => s + v, 0);
+      if (sum !== newTotal) out[11] += newTotal - sum;
+      return out;
+    }
+    const perMonth = Math.floor(newTotal / 12);
+    const out = new Array(12).fill(perMonth);
+    out[11] += newTotal - perMonth * 12;
+    return out;
+  }
+
+  for (const key of ACC_KEYS as AccKey[]) {
+    const dealerAnnualK = getAnnualRetailK(retailData.dealer.rows, key);
+    const hqAnnualK = getAnnualRetailK(retailData.hq.rows, key);
+    const dealerWeekly = dealerAnnualK / (yearDays / 7);
+    const hqCombinedWeekly = (dealerAnnualK + hqAnnualK) / (yearDays / 7);
+
+    const targetClosingDealer = Math.round(dealerWeekly * accTargetWoiDealer[key]);
+    const targetClosingHq = Math.round(hqCombinedWeekly * accTargetWoiHq[key]);
+
+    // 1. 대리상 처리 (기존과 동일)
+    const dRow = dealerByKey[key];
+    if (dRow) {
+      dealerByKey[key] = applyTargetClosingToAccRow(
+        dRow,
+        targetClosingDealer,
+        accTargetWoiDealer[key],
+        yearDays
+      );
+    }
+
+    // 2. 본사: 대리상출고 = dealer 새 Sell-in, 상품매입 = 기말 + 대리상출고 + 본사판매 − 기초
+    const hRow = hqByKey[key];
+    if (hRow) {
+      // 대리상 Sell-in total을 본사 대리상출고로 사용
+      const newSellOutHq = dealerByKey[key]?.sellInTotal ?? 0;
+      const hqSalesTotal = hRow.hqSalesTotal ?? 0;
+      // 본사 기말: WOI × 주간매출 (목표)
+      const targetCls = targetClosingHq;
+      // 본사 상품매입 = 기말(목표) + 대리상출고 + 본사판매 − 기초
+      const rawSellInHq = targetCls + newSellOutHq + hqSalesTotal - hRow.opening;
+
+      // 매입이 음수면(기초재고로 충분) 매입=0, 기말은 실제 공식으로 재계산
+      const newSellInHq = Math.max(0, rawSellInHq);
+      const actualClosingHq =
+        rawSellInHq >= 0
+          ? targetCls
+          : Math.max(0, hRow.opening + newSellInHq - newSellOutHq - hqSalesTotal);
+
+      const sellOut = scaleSellToTotal(hRow.sellOut, newSellOutHq);
+      const sellIn = scaleSellToTotal(hRow.sellIn, newSellInHq);
+      const delta = actualClosingHq - hRow.opening;
+      const stDenom = sellThroughDenominator(hRow.key, hRow.opening, newSellInHq);
+      const sellThrough = stDenom > 0 ? (hRow.sellOutTotal / stDenom) * 100 : 0;
+      const woiWeekly = hqCombinedWeekly > 0 ? hqCombinedWeekly : 1;
+      const actualWoi = actualClosingHq / woiWeekly;
+
+      hqByKey[key] = {
+        ...hRow,
+        sellIn,
+        sellInTotal: newSellInHq,
+        sellOut,
+        sellOutTotal: newSellOutHq,
+        closing: actualClosingHq,
+        delta,
+        sellThrough,
+        woi: rawSellInHq >= 0 ? accTargetWoiHq[key] : actualWoi,
+      };
+    }
+  }
+
+  const leafRowOrder = [...SEASON_KEYS, ...ACC_KEYS];
+  const dealerLeafs = leafRowOrder.map((k) => dealerByKey[k]!);
+  const hqLeafs = leafRowOrder.map((k) => hqByKey[k]!);
+  const dealerRows = rebuildTableFromLeafs(dealerLeafs, yearDays);
+  const hqRows = rebuildTableFromLeafs(hqLeafs, yearDays);
+
+  return {
+    dealer: { rows: dealerRows },
+    hq: { rows: hqRows },
+  };
+}
+
+const LEAF_ROW_ORDER: RowKey[] = ['당년F', '당년S', '1년차', '2년차', '차기시즌', '과시즌', '신발', '모자', '가방', '기타'];
+
+/** 2026년만: 본사 상품매입·대리상출고 계획 오버레이. 본사 대리상출고 = 대리상 Sell-in 반영. */
+export function applyHqSellInSellOutPlanOverlay(
+  dealer: InventoryTableData,
+  hq: InventoryTableData,
+  hqSellInPlan: Partial<Record<RowKey, number>>,
+  hqSellOutPlan: Partial<Record<RowKey, number>>,
+  year: number
+): { dealer: InventoryTableData; hq: InventoryTableData } {
+  if (year !== 2026) return { dealer, hq };
+  const yearDays = calcYearDays(year);
+
+  const dealerByKey = Object.fromEntries(
+    dealer.rows.filter((r) => r.isLeaf).map((r) => [r.key, r])
+  ) as Record<string, InventoryRow>;
+  const hqByKey = Object.fromEntries(
+    hq.rows.filter((r) => r.isLeaf).map((r) => [r.key, r])
+  ) as Record<string, InventoryRow>;
+
+  function scaleSellToTotal(sell: number[], newTotal: number): number[] {
+    const prevTotal = sell.reduce((s, v) => s + v, 0);
+    if (newTotal <= 0) return new Array(12).fill(0);
+    if (prevTotal > 0) {
+      const scale = newTotal / prevTotal;
+      const out = sell.map((v) => Math.round(v * scale));
+      const sum = out.reduce((s, v) => s + v, 0);
+      if (sum !== newTotal) out[11] += newTotal - sum;
+      return out;
+    }
+    const perMonth = Math.floor(newTotal / 12);
+    const out = new Array(12).fill(perMonth);
+    out[11] += newTotal - perMonth * 12;
+    return out;
+  }
+
+  // 본사: plan에 있으면 sellInTotal/sellOutTotal 덮어쓰고 기말 = 기초 + 매입 - 대리상출고 - 본사판매
+  for (const key of LEAF_ROW_ORDER) {
+    const row = hqByKey[key];
+    if (!row) continue;
+    const planSellIn = hqSellInPlan[key as RowKey];
+    const planSellOut = hqSellOutPlan[key as RowKey];
+    const hasOverride = planSellIn != null || planSellOut != null;
+    if (!hasOverride) continue;
+
+    const newSellInTotal = planSellIn ?? row.sellInTotal;
+    const newSellOutTotal = planSellOut ?? row.sellOutTotal;
+
+    const sellIn = scaleSellToTotal(row.sellIn, newSellInTotal);
+    const sellOut = scaleSellToTotal(row.sellOut, newSellOutTotal);
+    const hqSalesTotal = row.hqSalesTotal ?? 0;
+    const closing = Math.round(row.opening + newSellInTotal - newSellOutTotal - hqSalesTotal);
+    const delta = closing - row.opening;
+    const stDenom = sellThroughDenominator(row.key, row.opening, newSellInTotal);
+    const sellThrough = stDenom > 0 ? (newSellOutTotal / stDenom) * 100 : 0;
+    const woiSellOutTotal = row.woiSellOut.reduce((s, v) => s + v, 0);
+    const weeklyRate = woiSellOutTotal / (yearDays / 7);
+    const woi = weeklyRate > 0 ? closing / weeklyRate : 0;
+
+    hqByKey[key] = {
+      ...row,
+      sellIn,
+      sellInTotal: newSellInTotal,
+      sellOut,
+      sellOutTotal: newSellOutTotal,
+      closing,
+      delta,
+      sellThrough,
+      woi,
+    };
+  }
+
+  // 대리상: hqSellOutPlan에 있으면 해당 행의 Sell-in = 그 값, 기말 = 기초 + Sell-in - Sell-out
+  for (const key of LEAF_ROW_ORDER) {
+    const planSellOut = hqSellOutPlan[key as RowKey];
+    if (planSellOut == null) continue;
+    const row = dealerByKey[key];
+    if (!row) continue;
+
+    const sellIn = scaleSellToTotal(row.sellIn, planSellOut);
+    const closing = Math.round(row.opening + planSellOut - row.sellOutTotal);
+    const delta = closing - row.opening;
+    const stDenom = sellThroughDenominator(row.key, row.opening, planSellOut);
+    const sellThrough = stDenom > 0 ? (row.sellOutTotal / stDenom) * 100 : 0;
+    const weeklyRate = row.sellOutTotal / (yearDays / 7);
+    const woi = weeklyRate > 0 ? closing / weeklyRate : 0;
+
+    dealerByKey[key] = {
+      ...row,
+      sellIn,
+      sellInTotal: planSellOut,
+      closing,
+      delta,
+      sellThrough,
+      woi,
+    };
+  }
+
+  const dealerLeafs = LEAF_ROW_ORDER.map((k) => dealerByKey[k]!);
+  const hqLeafs = LEAF_ROW_ORDER.map((k) => hqByKey[k]!);
+  return {
+    dealer: { rows: rebuildTableFromLeafs(dealerLeafs, yearDays) },
+    hq: { rows: rebuildTableFromLeafs(hqLeafs, yearDays) },
+  };
+}
+
 // 2026년 역산: 목표 재고주수 → 목표 기말재고 → 필요 매입(Sell-in)
 // 대리상용: sellOut = POS 판매계획
 export function applyTargetWOI(
   raw2025: InventoryRowRaw[],
   targetWOI: number,
-  growthRate: number
+  growthRate: number,
+  yearDays: number = 365
 ): InventoryRowRaw[] {
   const factor = 1 + growthRate / 100;
   return raw2025.map((r) => {
     const opening = r.closing;
     const sellOut = r.sellOut.map((v) => Math.round(v * factor));
     const sellOutTotal = sellOut.reduce((s, v) => s + v, 0);
-    const weeklyRate = sellOutTotal / 52;
+    const weeklyRate = sellOutTotal / (yearDays / 7);
     const targetClosing = weeklyRate > 0 ? Math.round(weeklyRate * targetWOI) : 0;
     const requiredSellInTotal = targetClosing + sellOutTotal - opening;
 
@@ -197,7 +475,8 @@ export function applyTargetWOI(
 export function applyTargetWOIForHq(
   raw2025: InventoryRowRaw[],
   dealerRaw2026: InventoryRowRaw[],
-  targetHqWOI: number
+  targetHqWOI: number,
+  yearDays: number = 365
 ): InventoryRowRaw[] {
   const byKey = Object.fromEntries(dealerRaw2026.map((r) => [r.key, r]));
   return raw2025.map((r) => {
@@ -205,7 +484,7 @@ export function applyTargetWOIForHq(
     const dealerRow = byKey[r.key];
     const sellOut = dealerRow ? dealerRow.sellIn : new Array(12).fill(0);
     const sellOutTotal = sellOut.reduce((s, v) => s + v, 0);
-    const weeklyRate = sellOutTotal / 52;
+    const weeklyRate = sellOutTotal / (yearDays / 7);
     const targetClosing = weeklyRate > 0 ? Math.round(weeklyRate * targetHqWOI) : 0;
     const requiredSellInTotal = targetClosing + sellOutTotal - opening;
 
@@ -238,10 +517,10 @@ export function applyTargetWOIForHq(
 }
 
 // 표 내 WOI 편집 시 역산 (2026년)
-function recalcLeafFromWoi(row: InventoryRow, newWoi: number): InventoryRow {
+function recalcLeafFromWoi(row: InventoryRow, newWoi: number, yearDays: number = 365): InventoryRow {
   if (!row.isLeaf) return row;
   const sellOutTotal = row.sellOutTotal;
-  const weeklyRate = sellOutTotal / 52;
+  const weeklyRate = sellOutTotal / (yearDays / 7);
   const newClosing = weeklyRate > 0 ? Math.round(weeklyRate * newWoi) : 0;
   const newSellInTotal = newClosing + sellOutTotal - row.opening;
 
@@ -298,17 +577,17 @@ export function recalcOnDealerWoiChange(
     data.hq.rows.filter((r) => r.isLeaf).map((r) => [r.key, r])
   );
 
-  const updatedDealerLeaf = recalcLeafFromWoi(dealerByKey[rowKey]!, newWoi);
+  const updatedDealerLeaf = recalcLeafFromWoi(dealerByKey[rowKey]!, newWoi, 366);
   dealerByKey[rowKey] = updatedDealerLeaf;
   const newDealerLeafs = leafRows.map((k) => dealerByKey[k]!);
-  const dealerRows = rebuildTableFromLeafs(newDealerLeafs);
+  const dealerRows = rebuildTableFromLeafs(newDealerLeafs, 366);
 
   // HQ sellOut = dealer sellIn; HQ 해당 행 갱신
   const hqRow = hqByKey[rowKey];
   if (hqRow) {
     const sellOut = updatedDealerLeaf.sellIn;
     const sellOutTotal = sellOut.reduce((s, v) => s + v, 0);
-    const weeklyRate = sellOutTotal / 52;
+    const weeklyRate = sellOutTotal / (366 / 7);
     const newClosing = weeklyRate > 0 ? Math.round(weeklyRate * hqRow.woi) : 0;
     const newSellInTotal = newClosing + sellOutTotal - hqRow.opening;
 
@@ -341,7 +620,7 @@ export function recalcOnDealerWoiChange(
     };
   }
   const newHqLeafs = leafRows.map((k) => hqByKey[k]!);
-  const hqRows = rebuildTableFromLeafs(newHqLeafs);
+  const hqRows = rebuildTableFromLeafs(newHqLeafs, 366);
 
   return {
     dealer: { rows: dealerRows },
@@ -359,11 +638,11 @@ export function recalcOnHqWoiChange(
     data.hq.rows.filter((r) => r.isLeaf).map((r) => [r.key, r])
   );
 
-  const updatedHqLeaf = recalcLeafFromWoi(hqByKey[rowKey]!, newWoi);
+  const updatedHqLeaf = recalcLeafFromWoi(hqByKey[rowKey]!, newWoi, 366);
   hqByKey[rowKey] = updatedHqLeaf;
   const newHqLeafs = leafRows.map((k) => hqByKey[k]!);
   return {
     ...data,
-    hq: { rows: rebuildTableFromLeafs(newHqLeafs) },
+    hq: { rows: rebuildTableFromLeafs(newHqLeafs, 366) },
   };
 }

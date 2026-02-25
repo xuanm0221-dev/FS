@@ -1,5 +1,7 @@
 export type SeasonKey = '당년F' | '당년S' | '1년차' | '2년차' | '차기시즌' | '과시즌';
 export type AccKey = '신발' | '모자' | '가방' | '기타';
+export const ACC_KEYS: AccKey[] = ['신발', '모자', '가방', '기타'];
+export const SEASON_KEYS: SeasonKey[] = ['당년F', '당년S', '1년차', '2년차', '차기시즌', '과시즌'];
 export type RowKey = SeasonKey | AccKey;
 export type Brand = '전체' | 'MLB' | 'MLB KIDS' | 'DISCOVERY';
 
@@ -11,6 +13,7 @@ export interface InventoryRowRaw {
   sellOut: number[];      // 월별 12개 (대리상: POS / 본사: 대리상출고)
   closing: number;        // 기말재고
   woiSellOut?: number[];  // WOI 전용 판매 시리즈 (본사: 리테일매출본사, 대리상: 미설정 시 sellOut 사용)
+  hqSales?: number[];     // 본사 전용: 12개월 본사 리테일 매출(K)
 }
 
 // 계산 완료된 행 (합계행 포함)
@@ -30,6 +33,8 @@ export interface InventoryRow {
   sellThrough: number;   // 판매율 (%)
   woi: number;           // 재고주수
   woiSellOut: number[];  // WOI 계산 기준 판매 시리즈 (소계 집계용)
+  hqSales?: number[];    // 본사 전용: 월별 본사판매(K)
+  hqSalesTotal?: number; // 본사 전용: 연간 본사판매 합계(K)
 }
 
 // 테이블 전체 데이터 (대리상 or 본사)

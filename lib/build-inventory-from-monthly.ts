@@ -108,6 +108,7 @@ export function buildTableDataFromMonthly(
       sellOut: sellOutHq,
       closing: closingHq,
       woiSellOut: woiSellOutHq,
+      hqSales: hqRetailK,
     });
   }
 

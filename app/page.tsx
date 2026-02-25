@@ -15,6 +15,7 @@ import CreditStatus from '@/components/CreditStatus';
 import BSAnalysis from '@/components/BSAnalysis';
 import ExecutiveSummary from '@/components/ExecutiveSummary';
 import { TableRow, CreditData, CreditRecoveryData, TabType, ExecutiveSummaryData } from '@/lib/types';
+import InventoryDashboard from '@/components/inventory/InventoryDashboard';
 
 export default function Home() {
   const [activeTab, setActiveTab] = useState<number>(0);
@@ -184,8 +185,8 @@ export default function Home() {
     { id: 'supra', label: 'SUPRA' },
   ];
 
-  const tabs = ['경영요약', '손익계산서', '재무상태표', '현금흐름표', '여신사용현황'];
-  const tabTypes: TabType[] = ['SUMMARY', 'PL', 'BS', 'CF', 'CREDIT'];
+  const tabs = ['경영요약', '손익계산서', '재무상태표', '현금흐름표', '여신사용현황', '재고자산'];
+  const tabTypes: TabType[] = ['SUMMARY', 'PL', 'BS', 'CF', 'CREDIT', 'INVENTORY'];
 
   // 데이터 로딩
   const loadData = async (type: TabType, year?: number, month?: number, brand?: string | null) => {
@@ -768,6 +769,9 @@ export default function Home() {
             )}
           </div>
         )}
+
+        {/* 재고자산 */}
+        {activeTab === 5 && <InventoryDashboard />}
       </div>
     </main>
   );

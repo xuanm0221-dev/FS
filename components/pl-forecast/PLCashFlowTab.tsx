@@ -98,6 +98,7 @@ export default function PLCashFlowTab() {
     'MLB KIDS': 0,
     DISCOVERY: 0,
   });
+  const [tagCostRatioLoaded, setTagCostRatioLoaded] = useState(false);
   const [tagCostRatio, setTagCostRatio] = useState<TagCostRatioMap>({
     MLB: null,
     'MLB KIDS': null,
@@ -108,6 +109,7 @@ export default function PLCashFlowTab() {
   );
   const [allCollapsed, setAllCollapsed] = useState(true);
   const [wcCollapsed, setWcCollapsed] = useState<Set<string>>(new Set(['wc_ar', 'wc_inventory', 'wc_ap']));
+  const [wcSupportCollapsed, setWcSupportCollapsed] = useState(true);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -157,6 +159,7 @@ export default function PLCashFlowTab() {
           'MLB KIDS': values['MLB KIDS'] == null ? null : Number(values['MLB KIDS']),
           DISCOVERY: values.DISCOVERY == null ? null : Number(values.DISCOVERY),
         });
+        setTagCostRatioLoaded(true);
       } catch {
         // ignore malformed payloads
       }
@@ -317,6 +320,11 @@ export default function PLCashFlowTab() {
     return current - actualK;
   };
 
+  const loadStatusLabel = tagCostRatioLoaded ? '로딩완료' : '로딩중';
+  const loadStatusClassName = tagCostRatioLoaded
+    ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+    : 'bg-amber-50 text-amber-700 border border-amber-200';
+
   return (
     <div>
       <div className="bg-gray-100 border-b border-gray-300">
@@ -329,6 +337,7 @@ export default function PLCashFlowTab() {
           >
             {allCollapsed ? '전체 펼치기' : '전체 접기'}
           </button>
+          <span className={`px-3 py-1 text-xs font-medium rounded-full ${loadStatusClassName}`}>{loadStatusLabel}</span>
         </div>
       </div>
 
@@ -481,6 +490,16 @@ export default function PLCashFlowTab() {
                 </tbody>
               </table>
             </div>
+            <div className="mt-3 flex justify-end">
+              <button
+                type="button"
+                onClick={() => setWcSupportCollapsed((prev) => !prev)}
+                className="px-3 py-1 text-xs font-medium rounded-md bg-gray-100 text-gray-700 border border-gray-300 hover:bg-gray-200 transition-colors"
+              >
+                {wcSupportCollapsed ? '보조지표 펼치기' : '보조지표 접기'}
+              </button>
+            </div>
+            {!wcSupportCollapsed && (
             <div className="mt-3 overflow-x-auto border border-gray-300 rounded-lg shadow-sm">
               <table className="w-full border-collapse text-sm">
                 <thead className="bg-slate-700 text-white">
@@ -498,7 +517,7 @@ export default function PLCashFlowTab() {
                 </thead>
                 <tbody>
                   <tr className="bg-slate-50">
-                    <td className="border border-gray-300 py-2 px-4 text-center font-medium text-slate-800">Tag재고</td>
+                    <td className="border border-gray-300 py-2 px-4 text-center font-medium text-slate-800">26년말 Tag재고</td>
                     {TAG_COST_RATIO_BRANDS.map((brand) => (
                       <td
                         key={`tag-inventory-value-${brand}`}
@@ -522,6 +541,7 @@ export default function PLCashFlowTab() {
                 </tbody>
               </table>
             </div>
+            )}
           </div>
 
           <div className="mt-8">

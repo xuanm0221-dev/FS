@@ -20,6 +20,10 @@ function buildYyymmList(year: number) {
   return { all, queryable };
 }
 
+function getPlanFromMonth(queryableMonths: string[]): number {
+  return queryableMonths.length + 1;
+}
+
 /**
  * DB 조회 결과의 monthly 배열(queryable 기준 인덱스)을
  * 연도 전체 12개월 기준으로 재정렬.
@@ -63,9 +67,9 @@ export async function GET(request: NextRequest) {
 
   try {
     if (year === 2026) {
-      const planFromMonth = 2;
       const { all: all2026, queryable: queryable2026 } = buildYyymmList(2026);
       const { all: all2025, queryable: queryable2025 } = buildYyymmList(2025);
+      const planFromMonth = getPlanFromMonth(queryable2026);
       const [data2026, data2025] = await Promise.all([
         queryable2026.length > 0
           ? fetchRetailSales(queryable2026, brand, 2026).then((r) => ({

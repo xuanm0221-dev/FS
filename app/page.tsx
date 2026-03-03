@@ -20,6 +20,7 @@ import PLForecastTab from '@/components/pl-forecast/PLForecastTab';
 
 export default function Home() {
   const [activeTab, setActiveTab] = useState<number>(5);
+  const [inventoryTabMounted, setInventoryTabMounted] = useState<boolean>(true);
   const [plYear, setPlYear] = useState<number>(2026);
   const [plBrand, setPlBrand] = useState<string | null>(null); // null=법인, 'mlb', 'kids' 등
   const [bsYear, setBsYear] = useState<number>(2026);
@@ -80,6 +81,12 @@ export default function Home() {
     if (activeTab === 2) {
       loadRemarks('bs');
       loadRemarks('wc');
+    }
+  }, [activeTab]);
+
+  useEffect(() => {
+    if (activeTab === 5) {
+      setInventoryTabMounted(true);
     }
   }, [activeTab]);
 
@@ -776,7 +783,7 @@ export default function Home() {
         )}
 
         {/* 재고자산 */}
-        {activeTab === 5 && <InventoryDashboard />}
+        {inventoryTabMounted && <div className={activeTab === 5 ? '' : 'hidden'}><InventoryDashboard /></div>}
         {activeTab === 6 && <PLForecastTab />}
       </div>
     </main>

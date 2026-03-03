@@ -315,7 +315,7 @@ export default function InventoryDashboard() {
   const [year, setYear] = useState<number>(2026);
   const [brand, setBrand] = useState<Brand>('MLB');
   const [growthRate, setGrowthRate] = useState<number>(5);
-  const [growthRateHq, setGrowthRateHq] = useState<number>(10);
+  const [growthRateHq, setGrowthRateHq] = useState<number>(17);
 
   const publishDealerAccSellIn = useCallback((nextMap: Record<'MLB' | 'MLB KIDS' | 'DISCOVERY', number>) => {
     if (typeof window === 'undefined') return;
@@ -417,6 +417,14 @@ export default function InventoryDashboard() {
   useEffect(() => {
     accHqHoldingWoiRef.current = accHqHoldingWoi;
   }, [accHqHoldingWoi]);
+  useEffect(() => {
+    const firstAccKey = ACC_KEYS[0];
+    if (!firstAccKey) return;
+    setAccTargetWoiDealer((prev) => {
+      if (prev[firstAccKey as AccKey] === 30) return prev;
+      return { ...prev, [firstAccKey]: 30 };
+    });
+  }, []);
   const [hqSellOutPlan, setHqSellOutPlan] = useState<Partial<Record<RowKey, number>>>({});
   const retail2025Ref = useRef<RetailSalesResponse['retail2025'] | null>(null);
   const monthlyByBrandRef = useRef<Partial<Record<LeafBrand, MonthlyStockResponse>>>({});

@@ -1,6 +1,6 @@
 ﻿'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { Fragment, useEffect, useMemo, useState } from 'react';
 import {
   ANNUAL_2025_RAW_BY_BRAND,
   DIRECT_EXPENSE_ACCOUNTS,
@@ -93,6 +93,16 @@ interface BrandActualApiResponse {
 
 interface OpexForecastApiResponse {
   brands: Record<SalesBrand, Record<string, (number | null)[]>>;
+  error?: string;
+}
+
+interface DirectExpenseRatioApiResponse {
+  brands: Record<SalesBrand, Record<string, (number | null)[]>>;
+  error?: string;
+}
+
+interface TagCostRatioApiResponse {
+  brands: Record<SalesBrand, (number | null)[]>;
   error?: string;
 }
 
@@ -314,7 +324,7 @@ function sumSeries(a: (number | null)[], b: (number | null)[]): (number | null)[
 }
 
 function applyRate(series: (number | null)[], percent: number): (number | null)[] {
-  return series.map((v) => (v === null ? null : (v * percent) / 100));
+  return series.map((v) => (v === null ? null : (v * percent) / 100 / 1.13));
 }
 
 function isSameSeries(a: (number | null)[], b: (number | null)[]): boolean {
@@ -342,16 +352,16 @@ function splitByPlannedRatio(
 }
 
 function readInventoryGrowthParams(): InventoryGrowthParams {
-  if (typeof window === 'undefined') return { growthRate: 5, growthRateHq: 10 };
+  if (typeof window === 'undefined') return { growthRate: 5, growthRateHq: 17 };
   const raw = window.localStorage.getItem(INVENTORY_GROWTH_PARAMS_KEY);
-  if (!raw) return { growthRate: 5, growthRateHq: 10 };
+  if (!raw) return { growthRate: 5, growthRateHq: 17 };
   try {
     const parsed = JSON.parse(raw) as Partial<InventoryGrowthParams>;
     const growthRate = typeof parsed.growthRate === 'number' ? parsed.growthRate : 5;
-    const growthRateHq = typeof parsed.growthRateHq === 'number' ? parsed.growthRateHq : 10;
+    const growthRateHq = typeof parsed.growthRateHq === 'number' ? parsed.growthRateHq : 17;
     return { growthRate, growthRateHq };
   } catch {
-    return { growthRate: 5, growthRateHq: 10 };
+    return { growthRate: 5, growthRateHq: 17 };
   }
 }
 
@@ -361,13 +371,15 @@ export default function PLForecastTab() {
   const [logicGuideCollapsed, setLogicGuideCollapsed] = useState<boolean>(true);
   const [monthlyInputs, setMonthlyInputs] = useState<MonthlyInputs>(emptyMonthlyInputs);
   const [salesSectionOpen, setSalesSectionOpen] = useState<boolean>(false);
+  const [directExpenseRatioSectionOpen, setDirectExpenseRatioSectionOpen] = useState<boolean>(false);
+  const [tagCostRatioSectionOpen, setTagCostRatioSectionOpen] = useState<boolean>(false);
   const [salesCollapsed, setSalesCollapsed] = useState<Set<string>>(new Set());
   const [otbLoading, setOtbLoading] = useState<boolean>(false);
   const [otbError, setOtbError] = useState<string | null>(null);
   const [otbData, setOtbData] = useState<Record<string, Record<string, number>> | null>(null);
   const [retailLoading, setRetailLoading] = useState<boolean>(false);
   const [retailError, setRetailError] = useState<string | null>(null);
-  const [growthParams, setGrowthParams] = useState<InventoryGrowthParams>({ growthRate: 5, growthRateHq: 10 });
+  const [growthParams, setGrowthParams] = useState<InventoryGrowthParams>({ growthRate: 5, growthRateHq: 17 });
   const [directRetailByBrand, setDirectRetailByBrand] = useState<Record<SalesBrand, (number | null)[]>>({
     MLB: new Array(12).fill(null),
     'MLB KIDS': new Array(12).fill(null),
@@ -386,6 +398,7 @@ export default function PLForecastTab() {
   const [accRatioRows, setAccRatioRows] = useState<AccShipmentRatioRow[]>([]);
   const [brandActualLoading, setBrandActualLoading] = useState<boolean>(false);
   const [brandActualError, setBrandActualError] = useState<string | null>(null);
+  const [brandActualAvailableMonths, setBrandActualAvailableMonths] = useState<number[]>([]);
   const [brandActualByBrand, setBrandActualByBrand] = useState<Record<SalesBrand, BrandActualData>>({
     MLB: { tag: { dealer: new Array(12).fill(null), direct: new Array(12).fill(null) }, sales: { dealer: new Array(12).fill(null), direct: new Array(12).fill(null) }, accounts: {} },
     'MLB KIDS': { tag: { dealer: new Array(12).fill(null), direct: new Array(12).fill(null) }, sales: { dealer: new Array(12).fill(null), direct: new Array(12).fill(null) }, accounts: {} },
@@ -397,6 +410,20 @@ export default function PLForecastTab() {
     MLB: {},
     'MLB KIDS': {},
     DISCOVERY: {},
+  });
+  const [directExpenseRatioLoading, setDirectExpenseRatioLoading] = useState<boolean>(false);
+  const [directExpenseRatioError, setDirectExpenseRatioError] = useState<string | null>(null);
+  const [directExpenseRatioByBrand, setDirectExpenseRatioByBrand] = useState<Record<SalesBrand, Record<string, (number | null)[]>>>({
+    MLB: {},
+    'MLB KIDS': {},
+    DISCOVERY: {},
+  });
+  const [tagCostRatioLoading, setTagCostRatioLoading] = useState<boolean>(false);
+  const [tagCostRatioError, setTagCostRatioError] = useState<string | null>(null);
+  const [tagCostRatioByBrand, setTagCostRatioByBrand] = useState<Record<SalesBrand, (number | null)[]>>({
+    MLB: new Array(12).fill(null),
+    'MLB KIDS': new Array(12).fill(null),
+    DISCOVERY: new Array(12).fill(null),
   });
 
   useEffect(() => {
@@ -481,6 +508,7 @@ export default function PLForecastTab() {
         const json = (await res.json()) as BrandActualApiResponse;
         if (!res.ok) throw new Error(json?.error || '브랜드 실적 데이터를 불러오지 못했습니다.');
         if (!mounted) return;
+        setBrandActualAvailableMonths(json.availableMonths ?? []);
         setBrandActualByBrand(
           json.brands ?? {
             MLB: { tag: { dealer: new Array(12).fill(null), direct: new Array(12).fill(null) }, sales: { dealer: new Array(12).fill(null), direct: new Array(12).fill(null) }, accounts: {} },
@@ -490,6 +518,7 @@ export default function PLForecastTab() {
         );
       } catch (err) {
         if (mounted) {
+          setBrandActualAvailableMonths([]);
           setBrandActualError(err instanceof Error ? err.message : '브랜드 실적 데이터를 불러오지 못했습니다.');
         }
       } finally {
@@ -528,6 +557,68 @@ export default function PLForecastTab() {
       }
     };
     fetchOpexForecast();
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    let mounted = true;
+    const fetchDirectExpenseRatio = async () => {
+      setDirectExpenseRatioLoading(true);
+      setDirectExpenseRatioError(null);
+      try {
+        const res = await fetch('/api/pl-forecast/direct-expense-ratio?year=2026', { cache: 'no-store' });
+        const json = (await res.json()) as DirectExpenseRatioApiResponse;
+        if (!res.ok) throw new Error(json?.error || '직접비율 데이터를 불러오지 못했습니다.');
+        if (!mounted) return;
+        setDirectExpenseRatioByBrand(
+          json.brands ?? {
+            MLB: {},
+            'MLB KIDS': {},
+            DISCOVERY: {},
+          },
+        );
+      } catch (err) {
+        if (mounted) {
+          setDirectExpenseRatioError(err instanceof Error ? err.message : '직접비율 데이터를 불러오지 못했습니다.');
+        }
+      } finally {
+        if (mounted) setDirectExpenseRatioLoading(false);
+      }
+    };
+    fetchDirectExpenseRatio();
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    let mounted = true;
+    const fetchTagCostRatio = async () => {
+      setTagCostRatioLoading(true);
+      setTagCostRatioError(null);
+      try {
+        const res = await fetch('/api/pl-forecast/tag-cost-ratio?year=2026', { cache: 'no-store' });
+        const json = (await res.json()) as TagCostRatioApiResponse;
+        if (!res.ok) throw new Error(json?.error || 'Tag대비원가율 데이터를 불러오지 못했습니다.');
+        if (!mounted) return;
+        setTagCostRatioByBrand(
+          json.brands ?? {
+            MLB: new Array(12).fill(null),
+            'MLB KIDS': new Array(12).fill(null),
+            DISCOVERY: new Array(12).fill(null),
+          },
+        );
+      } catch (err) {
+        if (mounted) {
+          setTagCostRatioError(err instanceof Error ? err.message : 'Tag대비원가율 데이터를 불러오지 못했습니다.');
+        }
+      } finally {
+        if (mounted) setTagCostRatioLoading(false);
+      }
+    };
+    fetchTagCostRatio();
     return () => {
       mounted = false;
     };
@@ -791,6 +882,24 @@ export default function PLForecastTab() {
       monthly: calculatedByBrand[brandKey].monthly[account] ?? new Array(12).fill(null),
       annual2025: calculatedByBrand[brandKey].annual2025[account] ?? null,
     };
+  };
+
+  const getAnnual26Value = (account: string): number | null => {
+    if (account === '영업이익률') {
+      const annualOi = sumOrNull(getRowSeries('영업이익').monthly);
+      const annualSales = sumOrNull(getRowSeries('실판매출').monthly);
+      if (annualOi === null || annualSales === null || annualSales === 0) return null;
+      return annualOi / annualSales;
+    }
+
+    if (account === '(Tag 대비 원가율)') {
+      const annualTag = sumOrNull(getRowSeries('Tag매출').monthly);
+      const annualCogs = sumOrNull(getRowSeries('매출원가').monthly);
+      if (annualTag === null || annualTag === 0 || annualCogs === null) return null;
+      return (annualCogs * 1.13) / annualTag;
+    }
+
+    return sumOrNull(getRowSeries(account).monthly);
   };
 
   const updateInput = (brand: ForecastLeafBrand, account: string, monthIndex: number, raw: string) => {
@@ -1070,6 +1179,11 @@ export default function PLForecastTab() {
     };
   }, [salesActualByBrand]);
 
+  const latestActualMonth = useMemo(() => {
+    if (brandActualAvailableMonths.length === 0) return 0;
+    return Math.max(...brandActualAvailableMonths);
+  }, [brandActualAvailableMonths]);
+
   useEffect(() => {
     setMonthlyInputs((prev) => {
       let changed = false;
@@ -1114,6 +1228,58 @@ export default function PLForecastTab() {
           }
         }
 
+        const tagCostRatioSeries = tagCostRatioByBrand[salesBrand] ?? new Array(12).fill(null);
+        const currentCogs = next[forecastBrand]['매출원가'] ?? new Array(12).fill(null);
+        const mergedCogs = [...currentCogs];
+        let cogsChanged = false;
+        for (let i = 0; i < 12; i += 1) {
+          if (i + 1 <= latestActualMonth) continue;
+          if (accountOverrides['매출원가']?.[i] !== null && accountOverrides['매출원가']?.[i] !== undefined) continue;
+
+          const tag = next[forecastBrand]['Tag매출']?.[i] ?? null;
+          const ratio = tagCostRatioSeries[i] ?? null;
+          if (tag === null || ratio === null) continue;
+
+          const forecastCogs = (tag / 1.13) * ratio;
+          if ((mergedCogs[i] ?? null) !== forecastCogs) {
+            mergedCogs[i] = forecastCogs;
+            cogsChanged = true;
+          }
+        }
+        if (cogsChanged) {
+          next[forecastBrand]['매출원가'] = mergedCogs;
+          changed = true;
+        }
+
+        const directExpenseRatio = directExpenseRatioByBrand[salesBrand] ?? {};
+        const salesSeries = next[forecastBrand]['실판매출'] ?? new Array(12).fill(null);
+        for (const account of DIRECT_EXPENSE_ACCOUNTS) {
+          const ratioSeries = directExpenseRatio[account];
+          if (!ratioSeries) continue;
+
+          const current = next[forecastBrand][account] ?? new Array(12).fill(null);
+          const merged = [...current];
+          let localChanged = false;
+          for (let i = 0; i < 12; i += 1) {
+            if (i + 1 <= latestActualMonth) continue;
+            if (accountOverrides[account]?.[i] !== null && accountOverrides[account]?.[i] !== undefined) continue;
+
+            const sales = salesSeries[i] ?? null;
+            const ratio = ratioSeries[i] ?? null;
+            if (sales === null || ratio === null) continue;
+
+            const forecastValue = sales * ratio;
+            if ((merged[i] ?? null) !== forecastValue) {
+              merged[i] = forecastValue;
+              localChanged = true;
+            }
+          }
+          if (localChanged) {
+            next[forecastBrand][account] = merged;
+            changed = true;
+          }
+        }
+
         const opexForecast = opexForecastByBrand[salesBrand] ?? {};
         for (const account of OPERATING_EXPENSE_ACCOUNTS) {
           const forecastSeries = opexForecast[account];
@@ -1140,7 +1306,7 @@ export default function PLForecastTab() {
 
       return changed ? next : prev;
     });
-  }, [tagSalesMonthlyByBrand, salesActualByBrand, brandActualByBrand, opexForecastByBrand]);
+  }, [tagSalesMonthlyByBrand, salesActualByBrand, brandActualByBrand, directExpenseRatioByBrand, latestActualMonth, opexForecastByBrand, tagCostRatioByBrand]);
 
   const visibleSalesRows = useMemo(() => {
     return salesRows.filter((row) => {
@@ -1187,6 +1353,30 @@ export default function PLForecastTab() {
     return `${value.toFixed(6)}`.replace(/\.?0+$/, '');
   };
 
+  const formatPercent3 = (value: number | null): string => {
+    if (value === null || Number.isNaN(value)) return '';
+    return `${(value * 100).toFixed(3)}%`;
+  };
+
+  const isLoadingAny =
+    otbLoading ||
+    retailLoading ||
+    shipmentProgressLoading ||
+    accRatioLoading ||
+    brandActualLoading ||
+    opexForecastLoading ||
+    directExpenseRatioLoading ||
+    tagCostRatioLoading;
+  const hasAnyLoadError =
+    !!otbError ||
+    !!retailError ||
+    !!shipmentProgressError ||
+    !!accRatioError ||
+    !!brandActualError ||
+    !!opexForecastError ||
+    !!directExpenseRatioError ||
+    !!tagCostRatioError;
+
   return (
     <div className="min-h-[calc(100vh-4rem)] bg-[radial-gradient(1200px_500px_at_10%_-20%,#e0e7ff_0%,transparent_55%),radial-gradient(900px_420px_at_100%_0%,#dbeafe_0%,transparent_45%),linear-gradient(180deg,#f8fafc_0%,#f1f5f9_100%)]">
       <div className="sticky top-16 z-40 border-b border-slate-200/80 bg-white/80 backdrop-blur-md">
@@ -1232,6 +1422,18 @@ export default function PLForecastTab() {
               {hasAnyExpanded ? '전체 접기' : '전체 펼치기'}
             </button>
 
+            <div
+              className={`rounded-full border px-3 py-1 text-xs shadow-sm ${
+                isLoadingAny
+                  ? 'border-red-300 bg-red-100 text-red-700'
+                  : hasAnyLoadError
+                    ? 'border-red-200 bg-red-50 text-red-600'
+                    : 'border-emerald-200 bg-emerald-50 text-emerald-700'
+              }`}
+            >
+              {isLoadingAny ? '데이터 로딩중' : hasAnyLoadError ? '오류' : 'PL 계산완료'}
+            </div>
+
             <div className="ml-auto rounded-full border border-slate-200 bg-white px-3 py-1 text-xs text-slate-500 shadow-sm">
               단위: CNY K
             </div>
@@ -1272,7 +1474,7 @@ export default function PLForecastTab() {
             <tbody>
               {visibleRows.map((row) => {
                 const series = getRowSeries(row.account);
-                const annual26 = sumOrNull(series.monthly);
+                const annual26 = getAnnual26Value(row.account);
                 const yoyText = formatYoYByAnnual(annual26, series.annual2025);
                 const isGroupCollapsed = row.isGroup && collapsed.has(row.account);
                 const accountLabel = ACCOUNT_LABEL_OVERRIDES[row.account] ?? row.account;
@@ -1351,8 +1553,8 @@ export default function PLForecastTab() {
               </div>
               <div className="rounded-lg border border-slate-200 bg-slate-50/70 px-3 py-2">
                 <div>3. `실판매출` 계산</div>
-                <div className="mt-0.5">`실판(대리상,m) = CSV값 있으면 CSV, 없으면 [Tag(의류,m)×의류출고율 + Tag(ACC,m)×ACC출고율]`</div>
-                <div className="mt-0.5">`실판(직영,m) = CSV값 있으면 CSV, 없으면 Tag(직영,m)×직영출고율`</div>
+                <div className="mt-0.5">`실판(대리상,m) = CSV값 있으면 CSV, 없으면 [Tag(의류,m)×의류출고율 + Tag(ACC,m)×ACC출고율] ÷ 1.13`</div>
+                <div className="mt-0.5">`실판(직영,m) = CSV값 있으면 CSV, 없으면 [Tag(직영,m)×직영출고율] ÷ 1.13`</div>
                 <div className="mt-0.5">`실판(의류,m) = 실판(대리상,m) × [계획실판의류(m)/(계획실판의류(m)+계획실판ACC(m))]`</div>
                 <div className="mt-0.5">`실판(ACC,m) = 실판(대리상,m) - 실판(의류,m)`</div>
                 <div className="mt-0.5">`실판(총,m) = 실판(대리상,m) + 실판(직영,m)`</div>
@@ -1610,6 +1812,178 @@ export default function PLForecastTab() {
                 </div>
               </div>
             </div>
+          )}
+        </div>
+
+        <div className="mt-8 rounded-2xl border border-slate-200 bg-slate-50/85 shadow-sm">
+          <button
+            type="button"
+            onClick={() => setDirectExpenseRatioSectionOpen((prev) => !prev)}
+            className="flex w-full items-center gap-3 px-4 py-3 text-left"
+          >
+            <span className="inline-flex h-6 w-6 items-center justify-center rounded-md bg-[#6b7a8f] text-xs text-white">
+              직
+            </span>
+            <div className="flex-1">
+              <div className="text-sm font-semibold text-slate-800">직접비율 보조지표</div>
+              <div className="text-xs text-slate-500">실적월까지 공백, 익월부터 12월까지 CSV 원천값 표시</div>
+            </div>
+            <div className="text-xs text-slate-500">
+              {directExpenseRatioLoading
+                ? '불러오는 중...'
+                : directExpenseRatioError
+                  ? '오류'
+                  : latestActualMonth > 0
+                    ? `실적월 ${latestActualMonth}월 기준`
+                    : '실적 파일 없음'}
+            </div>
+            <span className="text-xs text-slate-500">{directExpenseRatioSectionOpen ? '접기' : '펼치기'}</span>
+          </button>
+
+          {directExpenseRatioSectionOpen && (
+            <>
+              {directExpenseRatioError ? (
+                <div className="border-t border-slate-200 px-4 py-4 text-sm text-red-500">{directExpenseRatioError}</div>
+              ) : (
+                <div className="border-t border-slate-200 p-4">
+                  <div className="overflow-auto rounded-xl border border-slate-200 bg-white">
+                    <table className="w-full border-separate border-spacing-0 text-sm">
+                      <thead className="sticky top-0 z-10">
+                        <tr>
+                          <th className="min-w-[180px] border-b border-r border-slate-300 bg-slate-800 px-3 py-2 text-center font-semibold text-slate-100">
+                            구분
+                          </th>
+                          {MONTH_HEADERS.map((month) => (
+                            <th
+                              key={`direct-expense-ratio-${month}`}
+                              className="min-w-[92px] border-b border-r border-slate-300 bg-slate-800 px-3 py-2 text-center font-semibold text-slate-100 last:border-r-0"
+                            >
+                              {month}
+                            </th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {SALES_BRANDS.map((brand) => (
+                          <Fragment key={`direct-expense-ratio-group-${brand}`}>
+                            <tr key={`direct-expense-ratio-brand-${brand}`} className="bg-slate-100">
+                              <td className="border-b border-r border-slate-200 px-3 py-2 font-semibold text-slate-800">{brand}</td>
+                              {MONTH_HEADERS.map((_, monthIndex) => (
+                                <td
+                                  key={`direct-expense-ratio-brand-${brand}-${monthIndex}`}
+                                  className="border-b border-r border-slate-200 px-3 py-2 last:border-r-0"
+                                />
+                              ))}
+                            </tr>
+                            {DIRECT_EXPENSE_ACCOUNTS.map((account, accountIndex) => {
+                              const series = directExpenseRatioByBrand[brand]?.[account] ?? new Array(12).fill(null);
+                              return (
+                                <tr
+                                  key={`direct-expense-ratio-${brand}-${account}`}
+                                  className={accountIndex % 2 === 0 ? 'bg-white' : 'bg-slate-50/50'}
+                                >
+                                  <td className="border-b border-r border-slate-200 px-3 py-2 pl-7 text-slate-700">{account}</td>
+                                  {MONTH_HEADERS.map((_, monthIndex) => {
+                                    const hiddenByActual = monthIndex + 1 <= latestActualMonth;
+                                    const value = hiddenByActual ? null : (series[monthIndex] ?? null);
+                                    return (
+                                      <td
+                                        key={`direct-expense-ratio-${brand}-${account}-${monthIndex}`}
+                                        className="border-b border-r border-slate-200 px-3 py-2 text-right text-slate-700 last:border-r-0"
+                                      >
+                                        {formatPercent3(value)}
+                                      </td>
+                                    );
+                                  })}
+                                </tr>
+                              );
+                            })}
+                          </Fragment>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+            </>
+          )}
+        </div>
+
+        <div className="mt-8 rounded-2xl border border-slate-200 bg-slate-50/85 shadow-sm">
+          <button
+            type="button"
+            onClick={() => setTagCostRatioSectionOpen((prev) => !prev)}
+            className="flex w-full items-center gap-3 px-4 py-3 text-left"
+          >
+            <span className="inline-flex h-6 w-6 items-center justify-center rounded-md bg-[#7b6a58] text-xs text-white">
+              원
+            </span>
+            <div className="flex-1">
+              <div className="text-sm font-semibold text-slate-800">Tag대비원가율 보조지표</div>
+              <div className="text-xs text-slate-500">실적월까지 공백, 익월부터 12월까지 CSV 원천값 표시</div>
+            </div>
+            <div className="text-xs text-slate-500">
+              {tagCostRatioLoading
+                ? '불러오는 중...'
+                : tagCostRatioError
+                  ? '오류'
+                  : latestActualMonth > 0
+                    ? `실적월 ${latestActualMonth}월 기준`
+                    : '실적 파일 없음'}
+            </div>
+            <span className="text-xs text-slate-500">{tagCostRatioSectionOpen ? '접기' : '펼치기'}</span>
+          </button>
+
+          {tagCostRatioSectionOpen && (
+            <>
+              {tagCostRatioError ? (
+                <div className="border-t border-slate-200 px-4 py-4 text-sm text-red-500">{tagCostRatioError}</div>
+              ) : (
+                <div className="border-t border-slate-200 p-4">
+                  <div className="overflow-auto rounded-xl border border-slate-200 bg-white">
+                    <table className="w-full border-separate border-spacing-0 text-sm">
+                      <thead className="sticky top-0 z-10">
+                        <tr>
+                          <th className="min-w-[180px] border-b border-r border-slate-300 bg-slate-800 px-3 py-2 text-center font-semibold text-slate-100">
+                            구분
+                          </th>
+                          {MONTH_HEADERS.map((month) => (
+                            <th
+                              key={`tag-cost-ratio-${month}`}
+                              className="min-w-[92px] border-b border-r border-slate-300 bg-slate-800 px-3 py-2 text-center font-semibold text-slate-100 last:border-r-0"
+                            >
+                              {month}
+                            </th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {SALES_BRANDS.map((brand, idx) => {
+                          const series = tagCostRatioByBrand[brand] ?? new Array(12).fill(null);
+                          return (
+                            <tr key={`tag-cost-ratio-${brand}`} className={idx % 2 === 0 ? 'bg-white' : 'bg-slate-50/50'}>
+                              <td className="border-b border-r border-slate-200 px-3 py-2 font-medium text-slate-800">{brand}</td>
+                              {MONTH_HEADERS.map((_, monthIndex) => {
+                                const hiddenByActual = monthIndex + 1 <= latestActualMonth;
+                                const value = hiddenByActual ? null : (series[monthIndex] ?? null);
+                                return (
+                                  <td
+                                    key={`tag-cost-ratio-${brand}-${monthIndex}`}
+                                    className="border-b border-r border-slate-200 px-3 py-2 text-right text-slate-700 last:border-r-0"
+                                  >
+                                    {formatPercent3(value)}
+                                  </td>
+                                );
+                              })}
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+            </>
           )}
         </div>
       </div>

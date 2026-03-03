@@ -3,7 +3,7 @@
     "monthly": {
       "year": 2026,
       "brand": "MLB",
-      "closedThrough": "202601",
+      "closedThrough": "202602",
       "dealer": {
         "rows": [
           {
@@ -15,7 +15,7 @@
             "opening": 5874775131,
             "monthly": [
               6145385169,
-              null,
+              5865375814,
               null,
               null,
               null,
@@ -37,7 +37,7 @@
             "opening": 3441602093,
             "monthly": [
               3420587018,
-              null,
+              3272899199,
               null,
               null,
               null,
@@ -59,7 +59,7 @@
             "opening": null,
             "monthly": [
               null,
-              null,
+              -769,
               null,
               null,
               null,
@@ -81,7 +81,7 @@
             "opening": 244037829,
             "monthly": [
               689921096,
-              null,
+              877815134,
               null,
               null,
               null,
@@ -103,7 +103,7 @@
             "opening": 2257652214,
             "monthly": [
               1892798524,
-              null,
+              1641975715,
               null,
               null,
               null,
@@ -125,7 +125,7 @@
             "opening": 691970533,
             "monthly": [
               619374260,
-              null,
+              555614926,
               null,
               null,
               null,
@@ -169,7 +169,7 @@
             "opening": 247941517,
             "monthly": [
               218493138,
-              null,
+              197494193,
               null,
               null,
               null,
@@ -191,7 +191,7 @@
             "opening": 2433173038,
             "monthly": [
               2724798151,
-              null,
+              2592476615,
               null,
               null,
               null,
@@ -213,7 +213,7 @@
             "opening": 1712126965,
             "monthly": [
               1922857258,
-              null,
+              1846513999,
               null,
               null,
               null,
@@ -235,7 +235,7 @@
             "opening": 505728060,
             "monthly": [
               554682253,
-              null,
+              517909677,
               null,
               null,
               null,
@@ -257,7 +257,7 @@
             "opening": 180258740,
             "monthly": [
               212841770,
-              null,
+              195386228,
               null,
               null,
               null,
@@ -279,7 +279,7 @@
             "opening": 35059273,
             "monthly": [
               34416870,
-              null,
+              32666711,
               null,
               null,
               null,
@@ -305,7 +305,7 @@
             "opening": 3718234069,
             "monthly": [
               4052143976,
-              null,
+              3968394858,
               null,
               null,
               null,
@@ -327,7 +327,7 @@
             "opening": 1747850308,
             "monthly": [
               2273929343,
-              null,
+              2360917197,
               null,
               null,
               null,
@@ -371,7 +371,7 @@
             "opening": 466947680,
             "monthly": [
               1081880470,
-              null,
+              1222846180,
               null,
               null,
               null,
@@ -393,7 +393,7 @@
             "opening": 840387754,
             "monthly": [
               777436879,
-              null,
+              741018807,
               null,
               null,
               null,
@@ -415,7 +415,7 @@
             "opening": 254497908,
             "monthly": [
               237730942,
-              null,
+              224593226,
               null,
               null,
               null,
@@ -459,7 +459,7 @@
             "opening": 186016966,
             "monthly": [
               176881052,
-              null,
+              172458984,
               null,
               null,
               null,
@@ -481,7 +481,7 @@
             "opening": 1970383761,
             "monthly": [
               1778214633,
-              null,
+              1607477661,
               null,
               null,
               null,
@@ -503,7 +503,7 @@
             "opening": 1489768405,
             "monthly": [
               1303526977,
-              null,
+              1180991077,
               null,
               null,
               null,
@@ -525,7 +525,7 @@
             "opening": 356938781,
             "monthly": [
               356992482,
-              null,
+              323828630,
               null,
               null,
               null,
@@ -547,7 +547,7 @@
             "opening": 110739345,
             "monthly": [
               105150421,
-              null,
+              91885562,
               null,
               null,
               null,
@@ -569,7 +569,7 @@
             "opening": 12937230,
             "monthly": [
               12544753,
-              null,
+              10772392,
               null,
               null,
               null,
@@ -588,7 +588,7 @@
     "retailActuals": {
       "year": 2026,
       "brand": "MLB",
-      "closedThrough": "202601",
+      "closedThrough": "202602",
       "dealer": {
         "rows": [
           {
@@ -599,7 +599,7 @@
             "isLeaf": false,
             "monthly": [
               857663578,
-              null,
+              1025639014,
               null,
               null,
               null,
@@ -620,7 +620,7 @@
             "isLeaf": false,
             "monthly": [
               520621983,
-              null,
+              578326167,
               null,
               null,
               null,
@@ -641,7 +641,7 @@
             "isLeaf": true,
             "monthly": [
               null,
-              null,
+              3767,
               null,
               null,
               null,
@@ -662,7 +662,7 @@
             "isLeaf": true,
             "monthly": [
               80493923,
-              null,
+              258017779,
               null,
               null,
               null,
@@ -683,7 +683,7 @@
             "isLeaf": true,
             "monthly": [
               365497044,
-              null,
+              245545583,
               null,
               null,
               null,
@@ -704,7 +704,7 @@
             "isLeaf": true,
             "monthly": [
               55060498,
-              null,
+              57125051,
               null,
               null,
               null,
@@ -746,7 +746,7 @@
             "isLeaf": true,
             "monthly": [
               19570518,
-              null,
+              17633987,
               null,
               null,
               null,
@@ -767,7 +767,7 @@
             "isLeaf": false,
             "monthly": [
               337041595,
-              null,
+              447312847,
               null,
               null,
               null,
@@ -788,7 +788,7 @@
             "isLeaf": true,
             "monthly": [
               225149474,
-              null,
+              312849388,
               null,
               null,
               null,
@@ -809,7 +809,7 @@
             "isLeaf": true,
             "monthly": [
               87615522,
-              null,
+              104672324,
               null,
               null,
               null,
@@ -830,7 +830,7 @@
             "isLeaf": true,
             "monthly": [
               19653398,
-              null,
+              26276071,
               null,
               null,
               null,
@@ -851,7 +851,7 @@
             "isLeaf": true,
             "monthly": [
               4623201,
-              null,
+              3515064,
               null,
               null,
               null,
@@ -876,7 +876,7 @@
             "isLeaf": false,
             "monthly": [
               163956281,
-              null,
+              108539841,
               null,
               null,
               null,
@@ -897,7 +897,7 @@
             "isLeaf": false,
             "monthly": [
               86161580,
-              null,
+              57365709,
               null,
               null,
               null,
@@ -939,7 +939,7 @@
             "isLeaf": true,
             "monthly": [
               6480489,
-              null,
+              11633126,
               null,
               null,
               null,
@@ -960,7 +960,7 @@
             "isLeaf": true,
             "monthly": [
               54109924,
-              null,
+              29302483,
               null,
               null,
               null,
@@ -981,7 +981,7 @@
             "isLeaf": true,
             "monthly": [
               17503376,
-              null,
+              12015554,
               null,
               null,
               null,
@@ -1023,7 +1023,7 @@
             "isLeaf": true,
             "monthly": [
               8067791,
-              null,
+              4414546,
               null,
               null,
               null,
@@ -1044,7 +1044,7 @@
             "isLeaf": false,
             "monthly": [
               77794701,
-              null,
+              51174132,
               null,
               null,
               null,
@@ -1065,7 +1065,7 @@
             "isLeaf": true,
             "monthly": [
               51083807,
-              null,
+              33370004,
               null,
               null,
               null,
@@ -1086,7 +1086,7 @@
             "isLeaf": true,
             "monthly": [
               22062555,
-              null,
+              14527547,
               null,
               null,
               null,
@@ -1107,7 +1107,7 @@
             "isLeaf": true,
             "monthly": [
               4154317,
-              null,
+              3013722,
               null,
               null,
               null,
@@ -1128,7 +1128,7 @@
             "isLeaf": true,
             "monthly": [
               494022,
-              null,
+              262859,
               null,
               null,
               null,
@@ -1143,7 +1143,7 @@
           }
         ]
       },
-      "planFromMonth": 2,
+      "planFromMonth": 3,
       "retail2025": {
         "dealer": {
           "rows": [
@@ -2260,7 +2260,7 @@
     "shipment": {
       "year": 2026,
       "brand": "MLB",
-      "closedThrough": "202601",
+      "closedThrough": "202602",
       "data": {
         "rows": [
           {
@@ -2271,7 +2271,7 @@
             "isLeaf": false,
             "monthly": [
               1253703665,
-              null,
+              369525297,
               null,
               null,
               null,
@@ -2292,7 +2292,7 @@
             "isLeaf": false,
             "monthly": [
               551097697,
-              null,
+              218099371,
               null,
               null,
               null,
@@ -2334,7 +2334,7 @@
             "isLeaf": true,
             "monthly": [
               536986060,
-              null,
+              212212206,
               null,
               null,
               null,
@@ -2355,7 +2355,7 @@
             "isLeaf": true,
             "monthly": [
               14111637,
-              null,
+              5887165,
               null,
               null,
               null,
@@ -2439,7 +2439,7 @@
             "isLeaf": false,
             "monthly": [
               702605968,
-              null,
+              151425926,
               null,
               null,
               null,
@@ -2460,7 +2460,7 @@
             "isLeaf": true,
             "monthly": [
               497608434,
-              null,
+              122467462,
               null,
               null,
               null,
@@ -2481,7 +2481,7 @@
             "isLeaf": true,
             "monthly": [
               141383607,
-              null,
+              20247795,
               null,
               null,
               null,
@@ -2502,7 +2502,7 @@
             "isLeaf": true,
             "monthly": [
               58787175,
-              null,
+              8544644,
               null,
               null,
               null,
@@ -2523,7 +2523,7 @@
             "isLeaf": true,
             "monthly": [
               4826752,
-              null,
+              166025,
               null,
               null,
               null,
@@ -2542,7 +2542,7 @@
     "purchase": {
       "year": 2026,
       "brand": "MLB",
-      "closedThrough": "202601",
+      "closedThrough": "202602",
       "data": {
         "rows": [
           {
@@ -2821,8 +2821,8 @@
         ]
       }
     },
-    "savedAt": "2026-02-26T12:31:09.376Z",
-    "planFromMonth": 2
+    "savedAt": "2026-03-03T05:46:01.488Z",
+    "planFromMonth": 3
   },
   "2026:MLB KIDS": {
     "monthly": {

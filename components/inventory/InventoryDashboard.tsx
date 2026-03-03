@@ -948,6 +948,8 @@ export default function InventoryDashboard() {
   const hqTableData = shouldUseTopTableOnly
     ? (topTableData?.hq ?? null)
     : (topTableData?.hq ?? data?.hq ?? null);
+  const statusLoading = loading || monthlyLoading || retailLoading || shipmentLoading || purchaseLoading || recalcLoading;
+  const statusError = !!error || !!monthlyError || !!retailError || !!shipmentError || !!purchaseError;
 
   useEffect(() => {
     if (typeof window === 'undefined' || year !== 2026 || !dealerTableData) return;
@@ -1153,6 +1155,8 @@ export default function InventoryDashboard() {
         snapshotSaved={snapshotSaved}
         snapshotSavedAt={snapshotSavedAt}
         recalcLoading={recalcLoading}
+        statusLoading={statusLoading}
+        statusError={statusError}
         onSave={handleSave}
         onRecalc={handleRecalc}
         canSave={!!(monthlyData && retailData && shipmentData && purchaseData)}

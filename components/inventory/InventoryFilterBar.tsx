@@ -72,6 +72,8 @@ interface Props {
   snapshotSaved: boolean;
   snapshotSavedAt: string | null;
   recalcLoading: boolean;
+  statusLoading: boolean;
+  statusError: boolean;
   canSave: boolean;
   onSave: () => void;
   onRecalc: (mode: 'current' | 'annual') => void;
@@ -85,6 +87,8 @@ export default function InventoryFilterBar({
   snapshotSaved,
   snapshotSavedAt,
   recalcLoading,
+  statusLoading,
+  statusError,
   canSave,
   onSave,
   onRecalc,
@@ -227,6 +231,18 @@ export default function InventoryFilterBar({
             )}
           </div>
         )}
+
+        <div
+          className={`rounded-full border px-3 py-1.5 text-xs font-medium shadow-sm ${
+            statusLoading
+              ? 'border-red-300 bg-red-100 text-red-700'
+              : statusError
+                ? 'border-red-200 bg-red-50 text-red-600'
+                : 'border-emerald-200 bg-emerald-50 text-emerald-700'
+          }`}
+        >
+          {statusLoading ? '데이터 로딩중' : statusError ? '오류' : '로딩완료'}
+        </div>
       </div>
     </div>
   );

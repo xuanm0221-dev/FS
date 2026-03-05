@@ -196,8 +196,8 @@ export default function Home() {
 
   const tabs = ['경영요약', '손익계산서', '재무상태표', '현금흐름표', '여신사용현황', '재고자산', 'PL(FY26 FCST)', 'CF'];
   const tabGroups = [
-    { id: 'group1', label: '그룹1', tabIndexes: [0, 1, 2, 3, 4] },
-    { id: 'group2', label: '그룹2', tabIndexes: [5, 6, 7] },
+    { id: 'group1', label: '그룹1', tabIndexes: [0, 1, 2, 3] },
+    { id: 'group2', label: '그룹2', tabIndexes: [4, 5, 6, 7] },
   ];
   const tabTypes: TabType[] = ['SUMMARY', 'PL', 'BS', 'CF', 'CREDIT', 'INVENTORY', 'PL', 'PL_CF'];
 
@@ -398,7 +398,7 @@ export default function Home() {
     } else if (currentType === 'CREDIT') {
       if (!creditData) loadData('CREDIT');
       if (!creditRecoveryData) {
-        fetch('/api/annual-plan/credit-recovery?baseYearMonth=26.01')
+        fetch('/api/annual-plan/credit-recovery?baseYearMonth=26.02')
           .then((r) => (r.ok ? r.json() : null))
           .then((res: { data?: CreditRecoveryData } | null) => {
             if (res?.data) setCreditRecoveryData(res.data);
@@ -555,7 +555,7 @@ export default function Home() {
         {/* PL - 손익계산서 */}
         {activeTab === 1 && (
           <div>
-            <div className="bg-gray-100 border-b border-gray-300">
+            <div className="sticky top-16 z-30 bg-gray-100 border-b border-gray-300">
               <div className="flex items-center gap-4 px-6 py-3">
                 <YearTabs years={[2024, 2025, 2026]} activeYear={plYear} onChange={setPlYear} />
                 {(plYear === 2025 || plYear === 2026) && (
@@ -771,7 +771,7 @@ export default function Home() {
         {activeTab === 4 && (
           <div>
             <div className="bg-gray-100 border-b border-gray-300 px-6 py-3">
-              <span className="text-sm font-medium text-gray-700">2026년 1월말 기준</span>
+              <span className="text-sm font-medium text-gray-700">2026년 2월말 기준</span>
             </div>
             {loading && <div className="p-6 text-center">로딩 중...</div>}
             {error && <div className="p-6 text-center text-red-500">{error}</div>}

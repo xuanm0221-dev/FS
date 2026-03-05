@@ -10,15 +10,10 @@ export interface PurchaseResponse {
   data: RetailSalesTableData;
 }
 
-/** YYMM 문자열 생성 (예: year=2025, month=1 → '202501') */
 function toYYMM(year: number, month: number): string {
   return `${year}${String(month).padStart(2, '0')}`;
 }
 
-/**
- * year 기준 YYMM 리스트 생성 — 기초 없음, 1월~12월만
- * queryable = CLOSED_THROUGH 이하인 월만
- */
 function buildYyymmList(year: number) {
   const all: string[] = Array.from({ length: 12 }, (_, i) => toYYMM(year, i + 1));
   const queryable = all.filter((yymm) => yymm <= CLOSED_THROUGH);
@@ -29,11 +24,12 @@ function padRows(
   rows: RetailSalesRow[],
   allYymms: string[],
   queryable: string[],
+  includeFuture: boolean,
 ): RetailSalesRow[] {
   return rows.map((row) => ({
     ...row,
     monthly: allYymms.map((yymm) => {
-      if (yymm > CLOSED_THROUGH) return null;
+      if (!includeFuture && yymm > CLOSED_THROUGH) return null;
       const idx = queryable.indexOf(yymm);
       return idx >= 0 ? (row.monthly[idx] ?? null) : null;
     }),
@@ -45,9 +41,11 @@ export async function GET(request: NextRequest) {
   const year = parseInt(searchParams.get('year') ?? '2025', 10);
   const brand = searchParams.get('brand') ?? 'MLB';
   const onlyLatest = searchParams.get('onlyLatest') === 'true';
+  const includeFuture = searchParams.get('includeFuture') === 'true';
 
   const { all: allYymms, queryable: allQueryable } = buildYyymmList(year);
-  const queryable = onlyLatest ? allQueryable.slice(-1) : allQueryable;
+  const baseQueryable = includeFuture ? allYymms : allQueryable;
+  const queryable = onlyLatest ? baseQueryable.slice(-1) : baseQueryable;
 
   if (queryable.length === 0) {
     return NextResponse.json({
@@ -65,7 +63,7 @@ export async function GET(request: NextRequest) {
       year,
       brand,
       closedThrough: CLOSED_THROUGH,
-      data: { rows: padRows(tableData.rows, allYymms, queryable) },
+      data: { rows: padRows(tableData.rows, allYymms, queryable, includeFuture) },
     };
 
     return NextResponse.json(response);

@@ -5,7 +5,7 @@ import { CreditData, CreditDealer } from '@/lib/types';
 
 export async function GET() {
   try {
-    const filePath = path.join(process.cwd(), '파일', '대리상AR선수금', '26.01.csv');
+    const filePath = path.join(process.cwd(), '파일', '대리상AR선수금', '26.02.csv');
     const dealers = await readCreditCSV(filePath);
 
     // 합계 행 찾기 또는 자동 계산
@@ -96,4 +96,3 @@ export async function GET() {
     );
   }
 }
-

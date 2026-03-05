@@ -74,7 +74,7 @@ export default function CreditStatus({ data, creditRecoveryData = null }: Credit
     // 상위에서 데이터가 아직 안 왔을 때만 한 번 직접 로드 (중복 요청 방지)
     if (recoverySelfFetchedRef.current) return;
     recoverySelfFetchedRef.current = true;
-    const baseYearMonth = '26.01';
+    const baseYearMonth = '26.02';
     fetch(`/api/annual-plan/credit-recovery?baseYearMonth=${baseYearMonth}`)
       .then((r) => (r.ok ? r.json() : null))
       .then((res: { data?: CreditRecoveryData } | null) => {
@@ -411,4 +411,3 @@ export default function CreditStatus({ data, creditRecoveryData = null }: Credit
     </div>
   );
 }
-

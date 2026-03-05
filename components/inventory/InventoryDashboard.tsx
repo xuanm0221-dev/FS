@@ -30,6 +30,8 @@ type TopTablePair = { dealer: InventoryTableData; hq: InventoryTableData };
 const ANNUAL_SHIPMENT_PLAN_KEY = 'inv_annual_shipment_plan_2026_v1';
 const INVENTORY_HQ_CLOSING_KEY = 'inventory_hq_closing_totals';
 const INVENTORY_MONTHLY_TOTAL_KEY = 'inventory_monthly_total_closing';
+const INVENTORY_PURCHASE_MONTHLY_KEY = 'inventory_purchase_monthly_by_brand';
+const INVENTORY_SHIPMENT_MONTHLY_KEY = 'inventory_shipment_monthly_by_brand';
 const ANNUAL_PLAN_BRANDS = ['MLB', 'MLB KIDS', 'DISCOVERY'] as const;
 const ANNUAL_PLAN_SEASONS = ['currF', 'currS', 'year1', 'year2', 'next', 'past'] as const;
 type AnnualPlanBrand = typeof ANNUAL_PLAN_BRANDS[number];
@@ -87,6 +89,9 @@ const DEPENDENT_DRIVER_ROWS = ['대리상출고', '본사상품매입', '본사�
 function formatDriverPercent(value: number): string {
   return `${100 + value}%`;
 }
+
+type DependentPlanRowLabel = (typeof DEPENDENT_DRIVER_ROWS)[number];
+type DependentPlanValueMap = Partial<Record<DependentPlanRowLabel, Record<AnnualPlanBrand, number | null>>>;
 
 function formatDriverNumber(value: number | null | undefined): string {
   if (value == null || !Number.isFinite(value)) return '-';
@@ -557,6 +562,64 @@ export default function InventoryDashboard() {
     window.dispatchEvent(new CustomEvent('inventory-monthly-total-updated', { detail: payload }));
   }, []);
 
+  const publishPurchaseMonthlyByBrand = useCallback((partialMap: Partial<MonthlyInventoryTotalByBrand>) => {
+    if (typeof window === 'undefined') return;
+    const currentRaw = localStorage.getItem(INVENTORY_PURCHASE_MONTHLY_KEY);
+    let currentValues: MonthlyInventoryTotalByBrand = {
+      MLB: new Array(12).fill(null),
+      'MLB KIDS': new Array(12).fill(null),
+      DISCOVERY: new Array(12).fill(null),
+    };
+    try {
+      const parsed = currentRaw ? JSON.parse(currentRaw) : null;
+      if (parsed?.values) {
+        currentValues = {
+          MLB: Array.isArray(parsed.values.MLB) ? parsed.values.MLB : new Array(12).fill(null),
+          'MLB KIDS': Array.isArray(parsed.values['MLB KIDS']) ? parsed.values['MLB KIDS'] : new Array(12).fill(null),
+          DISCOVERY: Array.isArray(parsed.values.DISCOVERY) ? parsed.values.DISCOVERY : new Array(12).fill(null),
+        };
+      }
+    } catch {
+      // ignore parse errors
+    }
+    const nextValues = { ...currentValues, ...partialMap };
+    const payload = {
+      values: nextValues,
+      updatedAt: Date.now(),
+    };
+    localStorage.setItem(INVENTORY_PURCHASE_MONTHLY_KEY, JSON.stringify(payload));
+    window.dispatchEvent(new CustomEvent('inventory-purchase-monthly-updated', { detail: payload }));
+  }, []);
+
+  const publishShipmentMonthlyByBrand = useCallback((partialMap: Partial<MonthlyInventoryTotalByBrand>) => {
+    if (typeof window === 'undefined') return;
+    const currentRaw = localStorage.getItem(INVENTORY_SHIPMENT_MONTHLY_KEY);
+    let currentValues: MonthlyInventoryTotalByBrand = {
+      MLB: new Array(12).fill(null),
+      'MLB KIDS': new Array(12).fill(null),
+      DISCOVERY: new Array(12).fill(null),
+    };
+    try {
+      const parsed = currentRaw ? JSON.parse(currentRaw) : null;
+      if (parsed?.values) {
+        currentValues = {
+          MLB: Array.isArray(parsed.values.MLB) ? parsed.values.MLB : new Array(12).fill(null),
+          'MLB KIDS': Array.isArray(parsed.values['MLB KIDS']) ? parsed.values['MLB KIDS'] : new Array(12).fill(null),
+          DISCOVERY: Array.isArray(parsed.values.DISCOVERY) ? parsed.values.DISCOVERY : new Array(12).fill(null),
+        };
+      }
+    } catch {
+      // ignore parse errors
+    }
+    const nextValues = { ...currentValues, ...partialMap };
+    const payload = {
+      values: nextValues,
+      updatedAt: Date.now(),
+    };
+    localStorage.setItem(INVENTORY_SHIPMENT_MONTHLY_KEY, JSON.stringify(payload));
+    window.dispatchEvent(new CustomEvent('inventory-shipment-monthly-updated', { detail: payload }));
+  }, []);
+
   useEffect(() => {
     if (typeof window === 'undefined') return;
     const payload = {
@@ -614,6 +677,9 @@ export default function InventoryDashboard() {
   const [shipmentOpen, setShipmentOpen] = useState(false);
   const [purchaseOpen, setPurchaseOpen] = useState(false);
   const [annualPlanOpen, setAnnualPlanOpen] = useState(false);
+  const [dependentPlanOpen, setDependentPlanOpen] = useState(false);
+  const [dependentPlanValues, setDependentPlanValues] = useState<DependentPlanValueMap>({});
+  const [dependentPlanInitialLoading, setDependentPlanInitialLoading] = useState(false);
   const [otbData, setOtbData] = useState<OtbData | null>(null);
   const [otbLoading, setOtbLoading] = useState(false);
   const [otbError, setOtbError] = useState<string | null>(null);
@@ -1207,6 +1273,52 @@ export default function InventoryDashboard() {
   // 2025쨌2026?????곷떒 ?쒕뒗 ?붾퀎 ?ш퀬?붿븸 + 由ы뀒??留ㅼ텧 + 異쒓퀬留ㅼ텧 + 留ㅼ엯?곹뭹?쇰줈 援ъ꽦
   // 2026???뚮쭔 ACC 紐⑺몴 ?ш퀬二쇱닔 ?ㅻ쾭?덉씠 ?곸슜
 
+  useEffect(() => {
+    if (year !== 2026) {
+      setDependentPlanValues({});
+      setDependentPlanInitialLoading(false);
+      return;
+    }
+    let mounted = true;
+    setDependentPlanInitialLoading(true);
+
+    const loadDependentPlanValues = async (silent = false) => {
+      try {
+        const res = await fetch('/api/inventory/dependent-plan', { cache: 'no-store' });
+        const json = await res.json();
+        if (!mounted || !res.ok || !Array.isArray(json?.rows)) return;
+
+        const next: DependentPlanValueMap = {};
+        for (const row of json.rows as { label?: string; values?: Record<string, number | null> }[]) {
+          const label = (row.label ?? '') as DependentPlanRowLabel;
+          if (!DEPENDENT_DRIVER_ROWS.includes(label)) continue;
+          next[label] = {
+            MLB: row.values?.MLB ?? null,
+            'MLB KIDS': row.values?.['MLB KIDS'] ?? null,
+            DISCOVERY: row.values?.DISCOVERY ?? null,
+          };
+        }
+        setDependentPlanValues(next);
+      } catch {
+        // ignore
+      } finally {
+        if (!silent && mounted) setDependentPlanInitialLoading(false);
+      }
+    };
+
+    loadDependentPlanValues(false);
+    const intervalId = window.setInterval(() => loadDependentPlanValues(true), 15000);
+    const handleFocus = () => {
+      loadDependentPlanValues(true);
+    };
+    window.addEventListener('focus', handleFocus);
+    return () => {
+      mounted = false;
+      window.clearInterval(intervalId);
+      window.removeEventListener('focus', handleFocus);
+    };
+  }, [year]);
+
   const effectiveRetailData = useMemo<RetailSalesResponse | null>(() => {
     if (!retailData) return null;
     if (year === 2025 && monthlyData && shipmentData) {
@@ -1690,6 +1802,25 @@ export default function InventoryDashboard() {
     }
     return result;
   }, [year, effectivePurchaseDisplayData, purchaseAnnualTotalByRowKey]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined' || year !== 2026) return;
+    if (brand !== 'MLB' && brand !== 'MLB KIDS' && brand !== 'DISCOVERY') return;
+    if (!effectivePurchaseDisplayData?.rows?.length) return;
+    const row = effectivePurchaseDisplayData.rows.find((r) => r.key === '매입합계');
+    if (!row?.monthly || !Array.isArray(row.monthly)) return;
+    publishPurchaseMonthlyByBrand({ [brand]: row.monthly });
+  }, [year, brand, effectivePurchaseDisplayData, publishPurchaseMonthlyByBrand]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined' || year !== 2026) return;
+    if (brand !== 'MLB' && brand !== 'MLB KIDS' && brand !== 'DISCOVERY') return;
+    if (!effectiveShipmentDisplayData?.rows?.length) return;
+    const row = effectiveShipmentDisplayData.rows.find((r) => r.key === '출고매출합계');
+    if (!row?.monthly || !Array.isArray(row.monthly)) return;
+    publishShipmentMonthlyByBrand({ [brand]: row.monthly });
+  }, [year, brand, effectiveShipmentDisplayData, publishShipmentMonthlyByBrand]);
+
   const monthlyPlanFromMonth = useMemo(() => {
     if (year !== 2026 || brand === '전체' || !monthlyData) return undefined;
     const closedThrough = monthlyData.closedThrough ?? '';
@@ -2012,7 +2143,8 @@ export default function InventoryDashboard() {
     publishMonthlyInventoryTotalByBrand({ [brand]: monthly });
   }, [year, brand, effectiveDealerMonthlyDisplayData, effectiveHqMonthlyDisplayData, publishMonthlyInventoryTotalByBrand]);
   const yoyPending = year === 2026 && !prevYearError && (prevYearLoading || !prevYearTableData);
-  const statusLoading = loading || monthlyLoading || retailLoading || shipmentLoading || purchaseLoading || recalcLoading || yoyPending;
+  const statusLoading =
+    loading || monthlyLoading || retailLoading || shipmentLoading || purchaseLoading || recalcLoading || yoyPending || dependentPlanInitialLoading;
   const statusError = !!error || !!monthlyError || !!retailError || !!shipmentError || !!purchaseError || prevYearError;
   const statusErrorMessage = error || monthlyError || retailError || shipmentError || purchaseError || prevYearError || null;
 
@@ -2281,7 +2413,7 @@ export default function InventoryDashboard() {
           <div className="mt-8" style={{ paddingLeft: '1.5%', paddingRight: '1.5%' }}>
             <div className="grid gap-6 lg:grid-cols-[minmax(0,0.7fr)_minmax(0,1.3fr)]">
               <div className="min-w-0 max-w-[560px]">
-                <div className="mb-3 border-l-4 border-sky-500 pl-3 text-sm font-bold text-slate-900">독립변수</div>
+                <div className="mb-3 border-l-4 border-sky-500 pl-3 text-sm font-bold text-slate-900">리케일 매출(변수)</div>
                 <div className="overflow-x-auto rounded-xl border border-slate-200 shadow-inner">
                   <table key={`independent-driver-${INDEPENDENT_DRIVER_COLUMN_HEADERS.join('|')}`} className="min-w-full border-collapse text-xs">
                     <thead>
@@ -2317,7 +2449,7 @@ export default function InventoryDashboard() {
                 </div>
               </div>
               <div className="min-w-0">
-                <div className="mb-3 border-l-4 border-amber-500 pl-3 text-sm font-bold text-slate-900">종속변수</div>
+                <div className="mb-3 border-l-4 border-amber-500 pl-3 text-sm font-bold text-slate-900">재고관련 주요지표</div>
                 <div className="overflow-x-auto rounded-xl border border-slate-200 shadow-inner">
                   <table key={`dependent-driver-${DRIVER_COLUMN_HEADERS.join('|')}`} className="min-w-full border-collapse text-xs">
                     <thead>
@@ -2337,11 +2469,52 @@ export default function InventoryDashboard() {
                       {DEPENDENT_DRIVER_ROWS.map((rowLabel, rowIndex) => (
                         <tr key={`derived-${rowLabel}`} className="bg-white odd:bg-slate-50/80 hover:bg-amber-50">
                           <td className="border-b border-slate-200 px-3 py-2.5 font-semibold text-slate-700">{rowLabel}</td>
-                          {DRIVER_COLUMN_HEADERS.map((column, columnIndex) => (
-                            <td key={`derived-${rowLabel}-${columnIndex}`} className="border-b border-slate-200 px-3 py-2.5 text-right text-sm font-semibold text-slate-950">
-                              {getDependentDriverCellValue(column, columnIndex, rowIndex, hqDriverTotalRow, prevYearHqDriverTotalRow)}
-                            </td>
-                          ))}
+                          {DRIVER_COLUMN_HEADERS.map((column, columnIndex) => {
+                            const planValue =
+                              brand === '전체'
+                                ? ANNUAL_PLAN_BRANDS.reduce<number | null>((sum, planBrand) => {
+                                    const value = dependentPlanValues[rowLabel]?.[planBrand];
+                                    if (value == null || !Number.isFinite(value)) return sum;
+                                    return (sum ?? 0) + value;
+                                  }, null)
+                                : (dependentPlanValues[rowLabel]?.[brand as AnnualPlanBrand] ?? null);
+                            const prevValue =
+                              rowIndex === 0
+                                ? prevYearHqDriverTotalRow?.sellOutTotal
+                                : rowIndex === 1
+                                  ? prevYearHqDriverTotalRow?.sellInTotal
+                                  : prevYearHqDriverTotalRow?.closing;
+                            const rollingValue =
+                              rowIndex === 0
+                                ? hqDriverTotalRow?.sellOutTotal
+                                : rowIndex === 1
+                                  ? hqDriverTotalRow?.sellInTotal
+                                  : hqDriverTotalRow?.closing;
+
+                            const yoyByPlanVsPrev =
+                              planValue != null && prevValue != null && Number.isFinite(planValue) && Number.isFinite(prevValue) && prevValue !== 0
+                                ? `${Math.round((planValue / prevValue) * 100).toLocaleString()}%`
+                                : '-';
+                            const planVsRolling =
+                              planValue != null && rollingValue != null && Number.isFinite(planValue) && Number.isFinite(rollingValue) && planValue !== 0
+                                ? `${Math.round((rollingValue / planValue) * 100).toLocaleString()}%`
+                                : '-';
+
+                            const displayValue =
+                              column === '계획'
+                                ? (planValue == null ? '-' : formatDriverNumber(planValue))
+                                : column === 'YOY' && columnIndex === 2
+                                  ? yoyByPlanVsPrev
+                                  : column === '계획대비 증감'
+                                    ? planVsRolling
+                                    : getDependentDriverCellValue(column, columnIndex, rowIndex, hqDriverTotalRow, prevYearHqDriverTotalRow);
+
+                            return (
+                              <td key={`derived-${rowLabel}-${columnIndex}`} className="border-b border-slate-200 px-3 py-2.5 text-right text-sm font-semibold text-slate-950">
+                                {displayValue}
+                              </td>
+                            );
+                          })}
                         </tr>
                       ))}
                       {false && DEPENDENT_DRIVER_ROWS.map((rowLabel, rowIndex) => (
@@ -2510,6 +2683,59 @@ export default function InventoryDashboard() {
 
               </div>
             )}
+          </div>
+        )}
+
+        {year === 2026 && (
+          <div className="mt-10 border-t border-gray-300 pt-8">
+            <button
+              type="button"
+              onClick={() => setDependentPlanOpen((v) => !v)}
+              className="flex items-center gap-2 w-full text-left py-1"
+            >
+              <SectionIcon>
+                <span className="text-lg">◫</span>
+              </SectionIcon>
+              <span className="text-sm font-bold text-slate-900">종속변수 계획값</span>
+              <span className="ml-auto text-gray-400 text-xs shrink-0">
+                {dependentPlanOpen ? TXT_COLLAPSE : TXT_EXPAND}
+              </span>
+            </button>
+            <div className={`${dependentPlanOpen ? 'mt-3' : 'hidden'} overflow-x-auto rounded-xl border border-slate-200 shadow-inner`}>
+              <table className="min-w-full border-collapse text-xs">
+                <thead>
+                  <tr>
+                    <th className="min-w-[140px] border border-slate-300 bg-slate-900 px-3 py-2.5 text-left text-[11px] font-semibold tracking-wide text-white">항목</th>
+                    {ANNUAL_PLAN_BRANDS.map((brand) => (
+                      <th
+                        key={`dependent-plan-header-${brand}`}
+                        className="min-w-[100px] border border-slate-300 bg-slate-900 px-3 py-2.5 text-center text-[11px] font-semibold tracking-wide text-white"
+                      >
+                        {brand}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {DEPENDENT_DRIVER_ROWS.map((rowLabel) => (
+                    <tr key={`dependent-plan-row-${rowLabel}`} className="bg-white odd:bg-slate-50/80">
+                      <td className="border-b border-slate-200 px-3 py-2.5 font-semibold text-slate-700">{rowLabel}</td>
+                      {ANNUAL_PLAN_BRANDS.map((brand) => {
+                        const value = dependentPlanValues[rowLabel]?.[brand];
+                        return (
+                          <td
+                            key={`dependent-plan-cell-${rowLabel}-${brand}`}
+                            className={`border-b border-slate-200 px-3 py-2.5 text-right ${value == null ? 'text-gray-300' : 'text-slate-900'}`}
+                          >
+                            {value == null ? '-' : formatDriverNumber(value)}
+                          </td>
+                        );
+                      })}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           </div>
         )}
 

@@ -1413,8 +1413,8 @@ export default function PLForecastTab() {
     !!tagCostRatioError;
 
   return (
-    <div className="min-h-[calc(100vh-4rem)] bg-[radial-gradient(1200px_500px_at_10%_-20%,#e0e7ff_0%,transparent_55%),radial-gradient(900px_420px_at_100%_0%,#dbeafe_0%,transparent_45%),linear-gradient(180deg,#f8fafc_0%,#f1f5f9_100%)]">
-      <div className="sticky top-16 z-40 border-b border-slate-200/80 bg-white/80 backdrop-blur-md">
+    <div className="h-[calc(100vh-64px)] overflow-auto bg-[radial-gradient(1200px_500px_at_10%_-20%,#e0e7ff_0%,transparent_55%),radial-gradient(900px_420px_at_100%_0%,#dbeafe_0%,transparent_45%),linear-gradient(180deg,#f8fafc_0%,#f1f5f9_100%)]">
+      <div className="sticky top-0 z-[60] border-b border-slate-200/80 bg-white/95 shadow-sm backdrop-blur-md">
         <div className="px-6 py-3">
           <div className="flex flex-wrap items-center gap-3">
             <div className="mr-2 whitespace-nowrap text-sm font-semibold tracking-tight text-slate-800">

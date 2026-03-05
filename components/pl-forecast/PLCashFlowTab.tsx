@@ -1,7 +1,7 @@
-'use client';
+﻿'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import { formatNumber } from '@/lib/utils';
+import { formatNumber, getRecoveryMonthLabelsAsN월 } from '@/lib/utils';
 import CFExplanationPanel from '@/components/CFExplanationPanel';
 
 type StaticCFRow = {
@@ -38,8 +38,36 @@ type TagCostRatioMap = {
   DISCOVERY: number | null;
 };
 
+type PurchaseMonthlyMap = {
+  MLB: (number | null)[];
+  'MLB KIDS': (number | null)[];
+  DISCOVERY: (number | null)[];
+};
+
+type CFSummaryApiRow = {
+  level: 0 | 1 | 2;
+  account: string;
+  values: number[];
+};
+
+type CashBorrowingApiData = {
+  cash: number[];
+  borrowing: number[];
+  prevCash?: number[];
+  prevBorrowing?: number[];
+};
+
+type PLCreditRecoveryData = {
+  baseYearMonth: string;
+  dealerAdvance: number;
+  dealerReceivable: number;
+  recoveries: number[];
+};
+
 const INVENTORY_HQ_CLOSING_KEY = 'inventory_hq_closing_totals';
 const INVENTORY_MONTHLY_TOTAL_KEY = 'inventory_monthly_total_closing';
+const INVENTORY_PURCHASE_MONTHLY_KEY = 'inventory_purchase_monthly_by_brand';
+const INVENTORY_SHIPMENT_MONTHLY_KEY = 'inventory_shipment_monthly_by_brand';
 const PL_TAG_COST_RATIO_KEY = 'pl_tag_cost_ratio_annual';
 
 const STATIC_CF_ROWS: StaticCFRow[] = [
@@ -90,17 +118,36 @@ const STATIC_WORKING_CAPITAL_ROWS: StaticWorkingCapitalRow[] = [
   { key: 'wc_ap_goods', label: '상품 AP', level: 2, isGroup: false, actual2025: -21410471 },
 ];
 
-const STATIC_CREDIT_RECOVERY = {
-  baseYearMonth: '26.01',
-  dealerAdvance: 394146000,
-  dealerReceivable: 801026000,
-  headers: ['2월', '3월', '4월'],
-};
-
 const TAG_COST_RATIO_BRANDS = ['MLB', 'MLB KIDS', 'DISCOVERY'] as const;
 const PL_CF_MONTH_LABELS = ['1월', '2월', '3월', '4월', '5월', '6월', '7월', '8월', '9월', '10월', '11월', '12월'] as const;
+const HARDCODED_WC_MONTHLY_K = {
+  wc_ar_direct: [84280.01, 54085.5, null, null, null, null, null, null, null, null, null, null] as (number | null)[],
+  wc_ar_dealer: [801026.483, 542417.643, null, null, null, null, null, null, null, null, null, null] as (number | null)[],
+  wc_ap_hq: [-632178.265, -340434.89, null, null, null, null, null, null, null, null, null, null] as (number | null)[],
+  wc_ap_goods: [-33077.305, -19565.995, null, null, null, null, null, null, null, null, null, null] as (number | null)[],
+} as const;
+const WC_AR_DIRECT_SHARE_OF_DEALER_AR = 52193 / 672991;
+const WC_AP_GOODS_SHARE_OF_HQ_AP = 21410 / 732511;
+const CF_GROUP_KEYS = ['operating', 'operating_receipts', 'operating_payments', 'operating_expenses', 'capex'] as const;
+const WC_GROUP_KEYS = ['wc_ar', 'wc_inventory', 'wc_ap'] as const;
+const VALUATION_REDUCTION_RATE: { MLB: number; 'MLB KIDS': number; DISCOVERY: number } = {
+  MLB: 0.133924,
+  'MLB KIDS': 0.276843,
+  DISCOVERY: 0.02253,
+};
 
 export default function PLCashFlowTab() {
+  const [cfValuesByKey, setCfValuesByKey] = useState<Record<string, number[]>>({});
+  const [cfLoaded, setCfLoaded] = useState(false);
+  const [cashBorrowingData, setCashBorrowingData] = useState<CashBorrowingApiData>({ cash: [], borrowing: [] });
+  const [cashBorrowingLoaded, setCashBorrowingLoaded] = useState(false);
+  const [creditRecovery, setCreditRecovery] = useState<PLCreditRecoveryData>({
+    baseYearMonth: '26.02',
+    dealerAdvance: 0,
+    dealerReceivable: 0,
+    recoveries: [],
+  });
+  const [creditRecoveryLoaded, setCreditRecoveryLoaded] = useState(false);
   const [inventoryHqClosing, setInventoryHqClosing] = useState<InventoryHqClosingMap>({
     MLB: 0,
     'MLB KIDS': 0,
@@ -120,109 +167,464 @@ export default function PLCashFlowTab() {
     DISCOVERY: null,
   });
   const [collapsed, setCollapsed] = useState<Set<string>>(
-    new Set(['operating', 'operating_receipts', 'operating_payments', 'operating_expenses', 'capex']),
+    new Set(CF_GROUP_KEYS),
   );
-  const [allCollapsed, setAllCollapsed] = useState(true);
   const [monthsCollapsed, setMonthsCollapsed] = useState(true);
-  const [wcCollapsed, setWcCollapsed] = useState<Set<string>>(new Set(['wc_ar', 'wc_inventory', 'wc_ap']));
+  const [wcCollapsed, setWcCollapsed] = useState<Set<string>>(new Set(WC_GROUP_KEYS));
+  const [wcLegendCollapsed, setWcLegendCollapsed] = useState(true);
   const [wcSupportCollapsed, setWcSupportCollapsed] = useState(true);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
+    let mounted = true;
 
     const readStored = (payload?: unknown) => {
       const source = payload ?? window.localStorage.getItem(INVENTORY_HQ_CLOSING_KEY);
-      if (!source) return;
+      if (!source) return false;
       try {
         const parsed = typeof source === 'string' ? JSON.parse(source) : source;
-        if (!parsed || typeof parsed !== 'object' || !('values' in parsed)) return;
+        if (!parsed || typeof parsed !== 'object' || !('values' in parsed)) return false;
         const values = (parsed as { values?: Record<string, unknown> }).values;
-        if (!values) return;
+        if (!values) return false;
         setInventoryHqClosing({
           MLB: Number(values.MLB) || 0,
           'MLB KIDS': Number(values['MLB KIDS']) || 0,
           DISCOVERY: Number(values.DISCOVERY) || 0,
         });
         setInventoryHqLoaded(true);
+        return true;
       } catch {
         // ignore malformed payloads
+        return false;
       }
     };
 
-    readStored();
+    const hasStored = readStored();
+    if (!hasStored) {
+      const fetchFallback = async () => {
+        const year = 2026;
+        const results = await Promise.all(
+          (TAG_COST_RATIO_BRANDS as readonly string[]).map(async (brand) => {
+            try {
+              const res = await fetch(`/api/inventory/monthly-stock?${new URLSearchParams({ year: String(year), brand, includeFuture: 'true' })}`, {
+                cache: 'no-store',
+              });
+              const json = await res.json();
+              const rows = Array.isArray(json?.hq?.rows) ? json.hq.rows : [];
+              const totalRow =
+                rows.find((row: { isTotal?: boolean }) => row?.isTotal) ??
+                rows.find((row: { key?: string }) => row?.key === '재고자산합계');
+              const monthly = Array.isArray(totalRow?.monthly)
+                ? (totalRow.monthly as (number | null)[])
+                : new Array(12).fill(null);
+              return { brand, monthly };
+            } catch {
+              return { brand, monthly: new Array(12).fill(null) as (number | null)[] };
+            }
+          }),
+        );
+        if (!mounted) return;
+        const nextMonthly: InventoryMonthlyTotalMap = {
+          MLB: new Array(12).fill(null),
+          'MLB KIDS': new Array(12).fill(null),
+          DISCOVERY: new Array(12).fill(null),
+        };
+        const nextClosing: InventoryHqClosingMap = {
+          MLB: 0,
+          'MLB KIDS': 0,
+          DISCOVERY: 0,
+        };
+        for (const { brand, monthly } of results) {
+          if (brand in nextMonthly) {
+            (nextMonthly as Record<string, (number | null)[]>)[brand] = monthly;
+            const closing = monthly[11];
+            (nextClosing as Record<string, number>)[brand] = typeof closing === 'number' ? closing : 0;
+          }
+        }
+        setInventoryMonthlyTotals(nextMonthly);
+        setInventoryMonthlyLoaded(true);
+        setInventoryHqClosing(nextClosing);
+        setInventoryHqLoaded(true);
+      };
+      fetchFallback();
+    }
     const handleUpdate = (event: Event) => {
       readStored((event as CustomEvent).detail);
     };
 
     window.addEventListener('inventory-hq-closing-updated', handleUpdate as EventListener);
     return () => {
+      mounted = false;
       window.removeEventListener('inventory-hq-closing-updated', handleUpdate as EventListener);
     };
   }, []);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
+    let mounted = true;
+
+    const loadCreditRecovery = async () => {
+      try {
+        const res = await fetch('/api/annual-plan/credit-recovery?baseYearMonth=26.02', { cache: 'no-store' });
+        const json = await res.json();
+        if (!mounted || !res.ok || !json?.data) return;
+        const payload = json.data as Record<string, unknown>;
+        const dealerAdvance = Number(payload['대리상선수금'] ?? 0);
+        const dealerReceivable = Number(payload['대리상채권'] ?? 0);
+        const recoveriesSource = Array.isArray(payload.recoveries) ? payload.recoveries : [];
+        const recoveries = recoveriesSource
+          .map((value) => Number(value))
+          .filter((value) => Number.isFinite(value));
+        setCreditRecovery({
+          baseYearMonth: typeof payload.baseYearMonth === 'string' ? payload.baseYearMonth : '26.02',
+          dealerAdvance,
+          dealerReceivable,
+          recoveries,
+        });
+      } catch {
+        // ignore
+      } finally {
+        if (mounted) setCreditRecoveryLoaded(true);
+      }
+    };
+
+    loadCreditRecovery();
+    const intervalId = window.setInterval(loadCreditRecovery, 15000);
+    const onFocus = () => {
+      loadCreditRecovery();
+    };
+    window.addEventListener('focus', onFocus);
+    return () => {
+      mounted = false;
+      window.clearInterval(intervalId);
+      window.removeEventListener('focus', onFocus);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    let mounted = true;
+
+    const loadCashBorrowing = async () => {
+      try {
+        const res = await fetch('/api/fs/cash-borrowing?year=2026', { cache: 'no-store' });
+        const json = await res.json();
+        if (!mounted || !res.ok) return;
+        setCashBorrowingData({
+          cash: Array.isArray(json?.cash) ? json.cash : [],
+          borrowing: Array.isArray(json?.borrowing) ? json.borrowing : [],
+          prevCash: Array.isArray(json?.prevCash) ? json.prevCash : undefined,
+          prevBorrowing: Array.isArray(json?.prevBorrowing) ? json.prevBorrowing : undefined,
+        });
+      } catch {
+        // ignore
+      } finally {
+        if (mounted) setCashBorrowingLoaded(true);
+      }
+    };
+
+    loadCashBorrowing();
+    const intervalId = window.setInterval(loadCashBorrowing, 15000);
+    const onFocus = () => {
+      loadCashBorrowing();
+    };
+    window.addEventListener('focus', onFocus);
+    return () => {
+      mounted = false;
+      window.clearInterval(intervalId);
+      window.removeEventListener('focus', onFocus);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    let mounted = true;
 
     const readStored = (payload?: unknown) => {
       const source = payload ?? window.localStorage.getItem(INVENTORY_MONTHLY_TOTAL_KEY);
-      if (!source) return;
+      if (!source) return false;
       try {
         const parsed = typeof source === 'string' ? JSON.parse(source) : source;
-        if (!parsed || typeof parsed !== 'object' || !('values' in parsed)) return;
+        if (!parsed || typeof parsed !== 'object' || !('values' in parsed)) return false;
         const values = (parsed as { values?: Record<string, unknown> }).values;
-        if (!values) return;
+        if (!values) return false;
         setInventoryMonthlyTotals({
           MLB: Array.isArray(values.MLB) ? (values.MLB as (number | null)[]) : new Array(12).fill(null),
           'MLB KIDS': Array.isArray(values['MLB KIDS']) ? (values['MLB KIDS'] as (number | null)[]) : new Array(12).fill(null),
           DISCOVERY: Array.isArray(values.DISCOVERY) ? (values.DISCOVERY as (number | null)[]) : new Array(12).fill(null),
         });
+        const hasAnyValue = [values.MLB, values['MLB KIDS'], values.DISCOVERY]
+          .filter(Array.isArray)
+          .some((series) => (series as unknown[]).some((v) => v != null));
+        if (!hasAnyValue) return false;
         setInventoryMonthlyLoaded(true);
+        return true;
       } catch {
         // ignore malformed payloads
+        return false;
       }
     };
 
-    readStored();
+    const hasStored = readStored();
+    if (!hasStored) {
+      const fetchFallback = async () => {
+        const year = 2026;
+        const results = await Promise.all(
+          (TAG_COST_RATIO_BRANDS as readonly string[]).map(async (brand) => {
+            try {
+              const res = await fetch(
+                `/api/inventory/monthly-stock?${new URLSearchParams({ year: String(year), brand, includeFuture: 'true' })}`,
+                {
+                  cache: 'no-store',
+                },
+              );
+              const json = await res.json();
+              const rows = Array.isArray(json?.hq?.rows) ? json.hq.rows : [];
+              const totalRow =
+                rows.find((row: { isTotal?: boolean }) => row?.isTotal) ??
+                rows.find((row: { key?: string }) => row?.key === '재고자산합계');
+              const monthly = Array.isArray(totalRow?.monthly)
+                ? (totalRow.monthly as (number | null)[])
+                : new Array(12).fill(null);
+              return { brand, monthly };
+            } catch {
+              return { brand, monthly: new Array(12).fill(null) as (number | null)[] };
+            }
+          }),
+        );
+        if (!mounted) return;
+        const nextMonthly: InventoryMonthlyTotalMap = {
+          MLB: new Array(12).fill(null),
+          'MLB KIDS': new Array(12).fill(null),
+          DISCOVERY: new Array(12).fill(null),
+        };
+        for (const { brand, monthly } of results) {
+          if (brand in nextMonthly) (nextMonthly as Record<string, (number | null)[]>)[brand] = monthly;
+        }
+        setInventoryMonthlyTotals(nextMonthly);
+        setInventoryMonthlyLoaded(true);
+      };
+      fetchFallback();
+    }
     const handleUpdate = (event: Event) => {
       readStored((event as CustomEvent).detail);
     };
 
     window.addEventListener('inventory-monthly-total-updated', handleUpdate as EventListener);
     return () => {
+      mounted = false;
       window.removeEventListener('inventory-monthly-total-updated', handleUpdate as EventListener);
     };
   }, []);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
+    let mounted = true;
 
     const readStored = (payload?: unknown) => {
       const source = payload ?? window.localStorage.getItem(PL_TAG_COST_RATIO_KEY);
-      if (!source) return;
+      if (!source) return false;
       try {
         const parsed = typeof source === 'string' ? JSON.parse(source) : source;
-        if (!parsed || typeof parsed !== 'object' || !('values' in parsed)) return;
+        if (!parsed || typeof parsed !== 'object' || !('values' in parsed)) return false;
         const values = (parsed as { values?: Record<string, unknown> }).values;
-        if (!values) return;
+        if (!values) return false;
         setTagCostRatio({
           MLB: values.MLB == null ? null : Number(values.MLB),
           'MLB KIDS': values['MLB KIDS'] == null ? null : Number(values['MLB KIDS']),
           DISCOVERY: values.DISCOVERY == null ? null : Number(values.DISCOVERY),
         });
         setTagCostRatioLoaded(true);
+        return true;
       } catch {
         // ignore malformed payloads
+        return false;
       }
     };
 
-    readStored();
+    const hasStored = readStored();
+    if (!hasStored) {
+      const fetchFallback = async () => {
+        try {
+          const res = await fetch('/api/pl-forecast/tag-cost-ratio?year=2026', { cache: 'no-store' });
+          const json = await res.json();
+          if (!mounted || !res.ok) return;
+          const values = ((json?.values ?? json?.brands ?? {}) as Record<string, number | null | undefined | (number | null)[]>);
+          const pickAnnual = (value: number | null | undefined | (number | null)[]) =>
+            Array.isArray(value) ? value[11] : value;
+          setTagCostRatio({
+            MLB: pickAnnual(values.MLB) == null ? null : Number(pickAnnual(values.MLB)),
+            'MLB KIDS': pickAnnual(values['MLB KIDS']) == null ? null : Number(pickAnnual(values['MLB KIDS'])),
+            DISCOVERY: pickAnnual(values.DISCOVERY) == null ? null : Number(pickAnnual(values.DISCOVERY)),
+          });
+          setTagCostRatioLoaded(true);
+        } catch {
+          // ignore
+        }
+      };
+      fetchFallback();
+    }
     const handleUpdate = (event: Event) => {
       readStored((event as CustomEvent).detail);
     };
 
     window.addEventListener('pl-tag-cost-ratio-updated', handleUpdate as EventListener);
     return () => {
+      mounted = false;
       window.removeEventListener('pl-tag-cost-ratio-updated', handleUpdate as EventListener);
+    };
+  }, []);
+
+  const [purchaseMonthlyByBrand, setPurchaseMonthlyByBrand] = useState<PurchaseMonthlyMap>({
+    MLB: new Array(12).fill(null),
+    'MLB KIDS': new Array(12).fill(null),
+    DISCOVERY: new Array(12).fill(null),
+  });
+  const [purchaseLoaded, setPurchaseLoaded] = useState(false);
+  const [shipmentMonthlyByBrand, setShipmentMonthlyByBrand] = useState<PurchaseMonthlyMap>({
+    MLB: new Array(12).fill(null),
+    'MLB KIDS': new Array(12).fill(null),
+    DISCOVERY: new Array(12).fill(null),
+  });
+  const [shipmentLoaded, setShipmentLoaded] = useState(false);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+
+    let mounted = true;
+
+    const readStored = (payload?: unknown) => {
+      const source = payload ?? window.localStorage.getItem(INVENTORY_PURCHASE_MONTHLY_KEY);
+      if (!source) return false;
+      try {
+        const parsed = typeof source === 'string' ? JSON.parse(source) : source;
+        if (!parsed || typeof parsed !== 'object' || !('values' in parsed)) return false;
+        const values = (parsed as { values?: Record<string, unknown> }).values;
+        if (!values) return false;
+        const next = {
+          MLB: Array.isArray(values.MLB) ? (values.MLB as (number | null)[]) : new Array(12).fill(null),
+          'MLB KIDS': Array.isArray(values['MLB KIDS']) ? (values['MLB KIDS'] as (number | null)[]) : new Array(12).fill(null),
+          DISCOVERY: Array.isArray(values.DISCOVERY) ? (values.DISCOVERY as (number | null)[]) : new Array(12).fill(null),
+        };
+        setPurchaseMonthlyByBrand(next);
+        const hasAnyValue = Object.values(next).some((series) => series.some((v) => v != null));
+        if (!hasAnyValue) return false;
+        setPurchaseLoaded(true);
+        return true;
+      } catch {
+        return false;
+      }
+    };
+
+    const hasStored = readStored();
+    if (!hasStored) {
+      const fetchPurchase = async () => {
+        const year = 2026;
+        const results = await Promise.all(
+          (TAG_COST_RATIO_BRANDS as readonly string[]).map(async (brand) => {
+            const res = await fetch(`/api/inventory/purchase?${new URLSearchParams({ year: String(year), brand, includeFuture: 'true' })}`, {
+              cache: 'no-store',
+            });
+            const json = await res.json();
+            if (!res.ok || json?.error) return { brand, monthly: new Array(12).fill(null) as (number | null)[] };
+            const row = json?.data?.rows?.find((r: { key: string }) => r.key === '매입합계');
+            const monthly = Array.isArray(row?.monthly) ? row.monthly : new Array(12).fill(null);
+            return { brand, monthly };
+          }),
+        );
+        if (!mounted) return;
+        const next: PurchaseMonthlyMap = {
+          MLB: new Array(12).fill(null),
+          'MLB KIDS': new Array(12).fill(null),
+          DISCOVERY: new Array(12).fill(null),
+        };
+        for (const { brand, monthly } of results) {
+          if (brand in next) (next as Record<string, (number | null)[]>)[brand] = monthly;
+        }
+        setPurchaseMonthlyByBrand(next);
+        setPurchaseLoaded(true);
+      };
+      fetchPurchase();
+    }
+
+    const handleUpdate = (event: Event) => {
+      readStored((event as CustomEvent).detail);
+    };
+
+    window.addEventListener('inventory-purchase-monthly-updated', handleUpdate as EventListener);
+    return () => {
+      mounted = false;
+      window.removeEventListener('inventory-purchase-monthly-updated', handleUpdate as EventListener);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+
+    let mounted = true;
+
+    const readStored = (payload?: unknown) => {
+      const source = payload ?? window.localStorage.getItem(INVENTORY_SHIPMENT_MONTHLY_KEY);
+      if (!source) return false;
+      try {
+        const parsed = typeof source === 'string' ? JSON.parse(source) : source;
+        if (!parsed || typeof parsed !== 'object' || !('values' in parsed)) return false;
+        const values = (parsed as { values?: Record<string, unknown> }).values;
+        if (!values) return false;
+        const next = {
+          MLB: Array.isArray(values.MLB) ? (values.MLB as (number | null)[]) : new Array(12).fill(null),
+          'MLB KIDS': Array.isArray(values['MLB KIDS']) ? (values['MLB KIDS'] as (number | null)[]) : new Array(12).fill(null),
+          DISCOVERY: Array.isArray(values.DISCOVERY) ? (values.DISCOVERY as (number | null)[]) : new Array(12).fill(null),
+        };
+        setShipmentMonthlyByBrand(next);
+        const hasAnyValue = Object.values(next).some((series) => series.some((v) => v != null));
+        if (!hasAnyValue) return false;
+        setShipmentLoaded(true);
+        return true;
+      } catch {
+        return false;
+      }
+    };
+
+    const hasStored = readStored();
+    if (!hasStored) {
+      const fetchShipment = async () => {
+        const year = 2026;
+        const results = await Promise.all(
+          (TAG_COST_RATIO_BRANDS as readonly string[]).map(async (brand) => {
+            const res = await fetch(`/api/inventory/shipment-sales?${new URLSearchParams({ year: String(year), brand, includeFuture: 'true' })}`, {
+              cache: 'no-store',
+            });
+            const json = await res.json();
+            if (!res.ok || json?.error) return { brand, monthly: new Array(12).fill(null) as (number | null)[] };
+            const row = json?.data?.rows?.find((r: { key: string }) => r.key === '출고매출합계');
+            const monthly = Array.isArray(row?.monthly) ? row.monthly : new Array(12).fill(null);
+            return { brand, monthly };
+          }),
+        );
+        if (!mounted) return;
+        const next: PurchaseMonthlyMap = {
+          MLB: new Array(12).fill(null),
+          'MLB KIDS': new Array(12).fill(null),
+          DISCOVERY: new Array(12).fill(null),
+        };
+        for (const { brand, monthly } of results) {
+          if (brand in next) (next as Record<string, (number | null)[]>)[brand] = monthly;
+        }
+        setShipmentMonthlyByBrand(next);
+        setShipmentLoaded(true);
+      };
+      fetchShipment();
+    }
+
+    const handleUpdate = (event: Event) => {
+      readStored((event as CustomEvent).detail);
+    };
+
+    window.addEventListener('inventory-shipment-monthly-updated', handleUpdate as EventListener);
+    return () => {
+      mounted = false;
+      window.removeEventListener('inventory-shipment-monthly-updated', handleUpdate as EventListener);
     };
   }, []);
 
@@ -271,15 +673,24 @@ export default function PLCashFlowTab() {
     });
   };
 
-  const toggleAll = () => {
-    if (allCollapsed) {
+  const isCfAllCollapsed = CF_GROUP_KEYS.every((key) => collapsed.has(key));
+  const isWcAllCollapsed = WC_GROUP_KEYS.every((key) => wcCollapsed.has(key));
+
+  const toggleAllCF = () => {
+    if (isCfAllCollapsed) {
       setCollapsed(new Set());
-      setAllCollapsed(false);
       return;
     }
 
-    setCollapsed(new Set(['operating', 'operating_receipts', 'operating_payments', 'operating_expenses', 'capex']));
-    setAllCollapsed(true);
+    setCollapsed(new Set(CF_GROUP_KEYS));
+  };
+
+  const toggleAllWC = () => {
+    if (isWcAllCollapsed) {
+      setWcCollapsed(new Set());
+      return;
+    }
+    setWcCollapsed(new Set(WC_GROUP_KEYS));
   };
 
   const toggleWorkingCapital = (key: string) => {
@@ -310,45 +721,186 @@ export default function PLCashFlowTab() {
     return `${(value * 100).toFixed(4)}%`;
   };
 
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    let mounted = true;
+
+    const buildCFValueMap = (rows: CFSummaryApiRow[]): Record<string, number[]> => {
+      const result: Record<string, number[]> = {};
+      let level0 = '';
+      let level1 = '';
+
+      for (const row of rows) {
+        if (row.level === 0) {
+          level0 = row.account;
+          level1 = '';
+        } else if (row.level === 1) {
+          level1 = row.account;
+        }
+
+        let key: string | null = null;
+        if (row.level === 0 && row.account === '영업활동') key = 'operating';
+        else if (row.level === 1 && level0 === '영업활동' && row.account === '매출수금') key = 'operating_receipts';
+        else if (row.level === 2 && level0 === '영업활동' && level1 === '매출수금' && row.account === 'MLB') key = 'operating_receipts_mlb';
+        else if (row.level === 2 && level0 === '영업활동' && level1 === '매출수금' && row.account === 'MLB KIDS') key = 'operating_receipts_kids';
+        else if (row.level === 2 && level0 === '영업활동' && level1 === '매출수금' && row.account === 'DISCOVERY') key = 'operating_receipts_discovery';
+        else if (row.level === 2 && level0 === '영업활동' && level1 === '매출수금' && row.account === 'DUVETICA') key = 'operating_receipts_duvetica';
+        else if (row.level === 2 && level0 === '영업활동' && level1 === '매출수금' && row.account === 'SUPRA') key = 'operating_receipts_supra';
+        else if (row.level === 1 && level0 === '영업활동' && row.account === '물품대') key = 'operating_payments';
+        else if (row.level === 2 && level0 === '영업활동' && level1 === '물품대' && row.account === '본사') key = 'operating_payments_hq';
+        else if (row.level === 2 && level0 === '영업활동' && level1 === '물품대' && row.account === '현지') key = 'operating_payments_local';
+        else if (row.level === 1 && level0 === '영업활동' && row.account === '본사선급금') key = 'operating_advance';
+        else if (row.level === 1 && level0 === '영업활동' && row.account === '비용') key = 'operating_expenses';
+        else if (row.level === 2 && level0 === '영업활동' && level1 === '비용' && row.account === '광고비') key = 'operating_expenses_ad';
+        else if (row.level === 2 && level0 === '영업활동' && level1 === '비용' && row.account === '온라인 플랫폼비용') key = 'operating_expenses_platform';
+        else if (row.level === 2 && level0 === '영업활동' && level1 === '비용' && row.account === '오프라인 매장비용') key = 'operating_expenses_store';
+        else if (row.level === 2 && level0 === '영업활동' && level1 === '비용' && row.account === '수입관세') key = 'operating_expenses_duty';
+        else if (row.level === 2 && level0 === '영업활동' && level1 === '비용' && row.account === '인건비') key = 'operating_expenses_payroll';
+        else if (row.level === 2 && level0 === '영업활동' && level1 === '비용' && row.account === '보증금지급') key = 'operating_expenses_deposit';
+        else if (row.level === 2 && level0 === '영업활동' && level1 === '비용' && row.account === '기타') key = 'operating_expenses_other';
+        else if (row.level === 0 && row.account === '자산성지출') key = 'capex';
+        else if (row.level === 1 && level0 === '자산성지출' && row.account === '인테리어/VMD') key = 'capex_interior';
+        else if (row.level === 1 && level0 === '자산성지출' && row.account === '비품취득') key = 'capex_fixture';
+        else if (row.level === 0 && row.account === '기타수익') key = 'other_income';
+        else if (row.level === 0 && row.account === '차입금') key = 'borrowings';
+        else if (row.level === 0 && row.account === 'net cash') key = 'net_cash';
+
+        if (key) result[key] = row.values;
+      }
+
+      return result;
+    };
+
+    const loadCF = async () => {
+      try {
+        const res = await fetch('/api/fs/cf-hierarchy?year=2026', { cache: 'no-store' });
+        const json = await res.json();
+        if (!mounted || !res.ok || !Array.isArray(json?.rows)) return;
+        setCfValuesByKey(buildCFValueMap(json.rows as CFSummaryApiRow[]));
+      } catch {
+        // ignore
+      } finally {
+        if (mounted) setCfLoaded(true);
+      }
+    };
+
+    loadCF();
+    const intervalId = window.setInterval(loadCF, 15000);
+    const onFocus = () => {
+      loadCF();
+    };
+    window.addEventListener('focus', onFocus);
+    return () => {
+      mounted = false;
+      window.clearInterval(intervalId);
+      window.removeEventListener('focus', onFocus);
+    };
+  }, []);
+
   const toDisplayK = (value: number | null | undefined) => {
     if (value == null) return null;
     return Math.round(value / 1000);
   };
 
-  const cf2026 = (_rowKey: string): number | null => null;
-
-  const cfYoy = (row: StaticCFRow): number | null => {
-    const current = cf2026(row.key);
-    const actualK = toDisplayK(row.actual2025);
-    if (current == null || actualK == null) return null;
-    return current - actualK;
+  const cfMonthly = (rowKey: string, monthIndex: number): number | null => {
+    const values = cfValuesByKey[rowKey];
+    if (!values) return null;
+    const raw = values[monthIndex + 1];
+    return Number.isFinite(raw) ? raw : null;
   };
 
-  const cashBorrowing2026 = (_rowKey: 'cash' | 'borrowing'): number | null => null;
+  const cf2026 = (rowKey: string): number | null => {
+    const values = cfValuesByKey[rowKey];
+    if (!values) return null;
+    const raw = values[13];
+    return Number.isFinite(raw) ? raw : null;
+  };
 
-  const cashBorrowingYoy = (rowKey: 'cash' | 'borrowing', actual2025: number): number | null => {
-    const current = cashBorrowing2026(rowKey);
-    const actualK = toDisplayK(actual2025);
-    if (current == null || actualK == null) return null;
-    return current - actualK;
+  const cfYoy = (row: StaticCFRow): number | null => {
+    const values = cfValuesByKey[row.key];
+    if (!values) return null;
+    const raw = values[14];
+    return Number.isFinite(raw) ? raw : null;
+  };
+
+  const cashBorrowingSeries = (rowKey: 'cash' | 'borrowing') =>
+    rowKey === 'cash'
+      ? { current: cashBorrowingData.cash, previous: cashBorrowingData.prevCash }
+      : { current: cashBorrowingData.borrowing, previous: cashBorrowingData.prevBorrowing };
+  const cashBorrowingOpening = (rowKey: 'cash' | 'borrowing'): number | null => {
+    const series = cashBorrowingSeries(rowKey);
+    const prevEnd = series.previous?.[13];
+    if (typeof prevEnd === 'number' && Number.isFinite(prevEnd)) return prevEnd;
+    const currentStart = series.current?.[0];
+    if (typeof currentStart === 'number' && Number.isFinite(currentStart)) return currentStart;
+    return rowKey === 'cash' ? STATIC_CASH_BORROWING.cashOpening : STATIC_CASH_BORROWING.borrowingOpening;
+  };
+  const cashBorrowingMonthly = (rowKey: 'cash' | 'borrowing', monthIndex: number): number | null => {
+    const series = cashBorrowingSeries(rowKey);
+    const raw = series.current?.[monthIndex + 1];
+    return Number.isFinite(raw) ? raw : null;
+  };
+  const cashBorrowing2026 = (rowKey: 'cash' | 'borrowing'): number | null => {
+    const series = cashBorrowingSeries(rowKey);
+    const raw = series.current?.[13];
+    return Number.isFinite(raw) ? raw : null;
+  };
+  const cashBorrowingYoy = (rowKey: 'cash' | 'borrowing'): number | null => {
+    const currentEnd = cashBorrowing2026(rowKey);
+    const opening = cashBorrowingOpening(rowKey);
+    if (currentEnd == null || opening == null) return null;
+    return currentEnd - opening;
   };
 
   const workingCapital2026 = (rowKey: string): number | null => {
-    const arDirect = 0;
-    const arDealer = 0;
+    const monthEndIndex = 11;
+    const arDealer =
+      HARDCODED_WC_MONTHLY_K.wc_ar_dealer[monthEndIndex] ??
+      TAG_COST_RATIO_BRANDS.reduce<number | null>((sum, brand) => {
+        const shipmentK = toDisplayK(shipmentMonthlyByBrand[brand][monthEndIndex]);
+        const ratio = tagCostRatio[brand];
+        if (shipmentK == null || shipmentK === 0 || ratio == null) return sum;
+        const planned = (shipmentK / 1.13) * ratio;
+        return (sum ?? 0) + planned;
+      }, null) ??
+      0;
+    const arDirect = HARDCODED_WC_MONTHLY_K.wc_ar_direct[monthEndIndex] ?? arDealer * WC_AR_DIRECT_SHARE_OF_DEALER_AR;
     const inventoryMlbTag = inventoryHqClosing.MLB || 0;
     const inventoryKidsTag = inventoryHqClosing['MLB KIDS'] || 0;
     const inventoryDiscoveryTag = inventoryHqClosing.DISCOVERY || 0;
-    const inventoryMlb = inventoryMlbTag === 0 || tagCostRatio.MLB == null ? 0 : (inventoryMlbTag / 1.13) * tagCostRatio.MLB;
+    const inventoryMlb =
+      inventoryMlbTag === 0 || tagCostRatio.MLB == null
+        ? 0
+        : (inventoryMlbTag / 1.13) * tagCostRatio.MLB * (1 - VALUATION_REDUCTION_RATE.MLB);
     const inventoryKids =
-      inventoryKidsTag === 0 || tagCostRatio['MLB KIDS'] == null ? 0 : (inventoryKidsTag / 1.13) * tagCostRatio['MLB KIDS'];
+      inventoryKidsTag === 0 || tagCostRatio['MLB KIDS'] == null
+        ? 0
+        : (inventoryKidsTag / 1.13) * tagCostRatio['MLB KIDS'] * (1 - VALUATION_REDUCTION_RATE['MLB KIDS']);
     const inventoryDiscovery =
-      inventoryDiscoveryTag === 0 || tagCostRatio.DISCOVERY == null ? 0 : (inventoryDiscoveryTag / 1.13) * tagCostRatio.DISCOVERY;
-    const apHq = 0;
-    const apGoods = 0;
+      inventoryDiscoveryTag === 0 || tagCostRatio.DISCOVERY == null
+        ? 0
+        : (inventoryDiscoveryTag / 1.13) * tagCostRatio.DISCOVERY * (1 - VALUATION_REDUCTION_RATE.DISCOVERY);
+    const apHq =
+      HARDCODED_WC_MONTHLY_K.wc_ap_hq[monthEndIndex] ??
+      TAG_COST_RATIO_BRANDS.reduce<number | null>((sum, brand) => {
+        const purchaseK = toDisplayK(purchaseMonthlyByBrand[brand][monthEndIndex]);
+        const ratio = tagCostRatio[brand];
+        if (purchaseK == null || purchaseK === 0 || ratio == null) return sum;
+        const planned = -((purchaseK / 1.13) * ratio);
+        return (sum ?? 0) + planned;
+      }, null) ??
+      0;
+    const apGoods = HARDCODED_WC_MONTHLY_K.wc_ap_goods[monthEndIndex] ?? apHq * WC_AP_GOODS_SHARE_OF_HQ_AP;
 
     if (rowKey === 'wc_total') {
       return arDirect + arDealer + inventoryMlb + inventoryKids + inventoryDiscovery + apHq + apGoods;
+    }
+    if (rowKey === 'wc_mom') {
+      const currentTotal = arDirect + arDealer + inventoryMlb + inventoryKids + inventoryDiscovery + apHq + apGoods;
+      const baseActual = STATIC_WORKING_CAPITAL_ROWS.find((row) => row.key === 'wc_total')?.actual2025 ?? null;
+      const baseActualK = toDisplayK(baseActual);
+      if (baseActualK == null) return null;
+      return currentTotal - baseActualK;
     }
     if (rowKey === 'wc_ar') return arDirect + arDealer;
     if (rowKey === 'wc_inventory') return inventoryMlb + inventoryKids + inventoryDiscovery;
@@ -370,51 +922,111 @@ export default function PLCashFlowTab() {
     return current - actualK;
   };
   const workingCapitalMonthly = (rowKey: string, monthIndex: number): number | null => {
+    const valuationMultiplier = (brand: keyof typeof VALUATION_REDUCTION_RATE) => (monthIndex >= 2 ? 1 - VALUATION_REDUCTION_RATE[brand] : 1);
     const mlbTag = toDisplayK(inventoryMonthlyTotals.MLB[monthIndex] ?? null);
     const kidsTag = toDisplayK(inventoryMonthlyTotals['MLB KIDS'][monthIndex] ?? null);
     const discoveryTag = toDisplayK(inventoryMonthlyTotals.DISCOVERY[monthIndex] ?? null);
     const mlb =
       mlbTag == null || mlbTag === 0 || tagCostRatio.MLB == null
         ? null
-        : (mlbTag / 1.13) * tagCostRatio.MLB;
+        : (mlbTag / 1.13) * tagCostRatio.MLB * valuationMultiplier('MLB');
     const kids =
       kidsTag == null || kidsTag === 0 || tagCostRatio['MLB KIDS'] == null
         ? null
-        : (kidsTag / 1.13) * tagCostRatio['MLB KIDS'];
+        : (kidsTag / 1.13) * tagCostRatio['MLB KIDS'] * valuationMultiplier('MLB KIDS');
     const discovery =
       discoveryTag == null || discoveryTag === 0 || tagCostRatio.DISCOVERY == null
         ? null
-        : (discoveryTag / 1.13) * tagCostRatio.DISCOVERY;
+        : (discoveryTag / 1.13) * tagCostRatio.DISCOVERY * valuationMultiplier('DISCOVERY');
     const total = [mlb, kids, discovery].reduce<number | null>((sum, value) => {
       if (value == null) return sum;
       return (sum ?? 0) + value;
     }, null);
+    const arDealer = HARDCODED_WC_MONTHLY_K.wc_ar_dealer[monthIndex] ?? TAG_COST_RATIO_BRANDS.reduce<number | null>((sum, brand) => {
+      const shipmentK = toDisplayK(shipmentMonthlyByBrand[brand][monthIndex]);
+      const ratio = tagCostRatio[brand];
+      if (shipmentK == null || shipmentK === 0 || ratio == null) return sum;
+      const planned = (shipmentK / 1.13) * ratio;
+      return (sum ?? 0) + planned;
+    }, null);
+    const apHq =
+      HARDCODED_WC_MONTHLY_K.wc_ap_hq[monthIndex] ??
+      TAG_COST_RATIO_BRANDS.reduce<number | null>((sum, brand) => {
+        const purchaseK = toDisplayK(purchaseMonthlyByBrand[brand][monthIndex]);
+        const ratio = tagCostRatio[brand];
+        if (purchaseK == null || purchaseK === 0 || ratio == null) return sum;
+        const planned = -((purchaseK / 1.13) * ratio);
+        return (sum ?? 0) + planned;
+      }, null);
+    const arDirect = HARDCODED_WC_MONTHLY_K.wc_ar_direct[monthIndex] ?? (arDealer == null ? null : arDealer * WC_AR_DIRECT_SHARE_OF_DEALER_AR);
+    const apGoods = HARDCODED_WC_MONTHLY_K.wc_ap_goods[monthIndex] ?? (apHq == null ? null : apHq * WC_AP_GOODS_SHARE_OF_HQ_AP);
+    const arTotal = [arDirect, arDealer].reduce<number | null>((sum, value) => {
+      if (value == null) return sum;
+      return (sum ?? 0) + value;
+    }, null);
+    const apTotal = [apHq, apGoods].reduce<number | null>((sum, value) => {
+      if (value == null) return sum;
+      return (sum ?? 0) + value;
+    }, null);
+    const grandTotal = [arTotal, total, apTotal].reduce<number | null>((sum, value) => {
+      if (value == null) return sum;
+      return (sum ?? 0) + value;
+    }, null);
 
+    if (rowKey === 'wc_total') return grandTotal;
+    if (rowKey === 'wc_ar') return arTotal;
+    if (rowKey === 'wc_ar_direct') return arDirect;
+    if (rowKey === 'wc_ar_dealer') return arDealer;
     if (rowKey === 'wc_inventory') return total;
     if (rowKey === 'wc_inventory_mlb') return mlb;
     if (rowKey === 'wc_inventory_kids') return kids;
     if (rowKey === 'wc_inventory_discovery') return discovery;
+    if (rowKey === 'wc_ap') return apTotal;
+    if (rowKey === 'wc_ap_hq') return apHq;
+    if (rowKey === 'wc_ap_goods') return apGoods;
+    if (rowKey === 'wc_mom') {
+      if (grandTotal == null) return null;
+      if (monthIndex === 0) {
+        const baseActual = STATIC_WORKING_CAPITAL_ROWS.find((row) => row.key === 'wc_total')?.actual2025 ?? null;
+        const baseActualK = toDisplayK(baseActual);
+        if (baseActualK == null) return null;
+        return grandTotal - baseActualK;
+      }
+      const prevMonthTotal = workingCapitalMonthly('wc_total', monthIndex - 1);
+      if (prevMonthTotal == null) return null;
+      return grandTotal - prevMonthTotal;
+    }
     return null;
   };
 
-  const cfInputsLoaded = tagCostRatioLoaded && inventoryHqLoaded && inventoryMonthlyLoaded;
+  const cfInputsLoaded =
+    tagCostRatioLoaded &&
+    inventoryHqLoaded &&
+    inventoryMonthlyLoaded &&
+    purchaseLoaded &&
+    shipmentLoaded &&
+    cfLoaded &&
+    cashBorrowingLoaded &&
+    creditRecoveryLoaded;
   const loadStatusLabel = cfInputsLoaded ? '로딩완료' : '로딩중';
   const loadStatusClassName = cfInputsLoaded
     ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
     : 'bg-amber-50 text-amber-700 border border-amber-200';
+  const creditRecoveryHeaders = useMemo(
+    () => getRecoveryMonthLabelsAsN월(creditRecovery.baseYearMonth, creditRecovery.recoveries.length),
+    [creditRecovery.baseYearMonth, creditRecovery.recoveries.length],
+  );
+  const hasWorkingCapitalActualMonth = (monthIndex: number) =>
+    [HARDCODED_WC_MONTHLY_K.wc_ar_direct, HARDCODED_WC_MONTHLY_K.wc_ar_dealer, HARDCODED_WC_MONTHLY_K.wc_ap_hq, HARDCODED_WC_MONTHLY_K.wc_ap_goods]
+      .some((series) => series[monthIndex] != null);
+  const formatWorkingCapitalMonthHeader = (month: string, monthIndex: number) =>
+    hasWorkingCapitalActualMonth(monthIndex) ? month : `${month}(F)`;
 
   return (
-    <div>
-      <div className="bg-gray-100 border-b border-gray-300">
+    <div className="h-[calc(100vh-64px)] overflow-auto bg-gray-50">
+      <div className="sticky top-0 z-[60] bg-gray-100/95 border-b border-gray-300 shadow-sm backdrop-blur">
         <div className="flex items-center gap-3 px-6 py-3">
           <span className="text-sm font-medium text-gray-700">2026년 현금흐름표 양식</span>
-          <button
-            type="button"
-            onClick={toggleAll}
-            className="px-4 py-2 text-sm font-medium rounded-lg bg-gray-200 text-gray-700 hover:bg-gray-300 transition-colors shadow-sm"
-          >
-            {allCollapsed ? '전체 펼치기' : '전체 접기'}
-          </button>
           <button
             type="button"
             onClick={() => setMonthsCollapsed((prev) => !prev)}
@@ -430,6 +1042,13 @@ export default function PLCashFlowTab() {
           <div className={`${monthsCollapsed ? 'w-1/3' : 'flex-1'} min-w-0 overflow-auto p-6`}>
           <div className="flex items-center gap-2 mb-3">
             <h2 className="text-lg font-bold text-gray-900">현금흐름표</h2>
+            <button
+              type="button"
+              onClick={toggleAllCF}
+              className="px-3 py-1 text-xs font-medium rounded-md bg-gray-100 text-gray-700 border border-gray-300 hover:bg-gray-200 transition-colors"
+            >
+              {isCfAllCollapsed ? '전체 펼치기' : '전체 접기'}
+            </button>
           </div>
 
           <div className="overflow-auto" style={{ maxHeight: 'calc(100vh - 220px)' }}>
@@ -491,13 +1110,19 @@ export default function PLCashFlowTab() {
                         )}
                       </td>
                       <td className="border border-gray-300 py-2 px-4 text-right">{formatActual(row.actual2025)}</td>
-                      {!monthsCollapsed && PL_CF_MONTH_LABELS.map((month) => (
-                        <td key={`cf-cell-${row.key}-${month}`} className="border border-gray-300 py-2 px-4 text-right text-gray-300">
-                          -
-                        </td>
-                      ))}
-                      <td className="border border-gray-300 py-2 px-4 text-right">{formatKValue(cf2026(row.key))}</td>
-                      <td className="border border-gray-300 py-2 px-4 text-right">{formatKValue(cfYoy(row))}</td>
+                      {!monthsCollapsed && PL_CF_MONTH_LABELS.map((month, monthIndex) => {
+                        const monthValue = cfMonthly(row.key, monthIndex);
+                        return (
+                          <td
+                            key={`cf-cell-${row.key}-${month}`}
+                            className={`border border-gray-300 py-2 px-4 text-right ${monthValue == null ? 'text-gray-300' : ''}`}
+                          >
+                            {monthValue == null ? '-' : formatActual(monthValue)}
+                          </td>
+                        );
+                      })}
+                      <td className="border border-gray-300 py-2 px-4 text-right">{formatActual(cf2026(row.key))}</td>
+                      <td className="border border-gray-300 py-2 px-4 text-right">{formatActual(cfYoy(row))}</td>
                     </tr>
                   );
                 })}
@@ -525,25 +1150,34 @@ export default function PLCashFlowTab() {
                 <tbody className="bg-gray-50">
                   <tr>
                     <td className="border border-gray-300 py-2 px-4 font-medium sticky left-0 z-10 bg-gray-100 text-gray-800">현금잔액</td>
-                    <td className="border border-gray-300 py-2 px-4 text-right bg-gray-50">{formatActual(STATIC_CASH_BORROWING.cashOpening)}</td>
-                    {!monthsCollapsed && PL_CF_MONTH_LABELS.map((month) => (
-                      <td key={`cash-cell-${month}`} className="border border-gray-300 py-2 px-4 text-right bg-gray-50 text-gray-300">
-                        -
-                      </td>
-                    ))}
-                    <td className="border border-gray-300 py-2 px-4 text-right bg-gray-50">{formatKValue(cashBorrowing2026('cash'))}</td>
-                    <td className="border border-gray-300 py-2 px-4 text-right bg-gray-50">{formatKValue(cashBorrowingYoy('cash', STATIC_CASH_BORROWING.cashOpening))}</td>
+                    <td className="border border-gray-300 py-2 px-4 text-right bg-gray-50">{formatActual(cashBorrowingOpening('cash'))}</td>
+                    {!monthsCollapsed && PL_CF_MONTH_LABELS.map((month, monthIndex) => {
+                      const monthValue = cashBorrowingMonthly('cash', monthIndex);
+                      return (
+                        <td key={`cash-cell-${month}`} className={`border border-gray-300 py-2 px-4 text-right bg-gray-50 ${monthValue == null ? 'text-gray-300' : ''}`}>
+                          {monthValue == null ? '-' : formatActual(monthValue)}
+                        </td>
+                      );
+                    })}
+                    <td className="border border-gray-300 py-2 px-4 text-right bg-gray-50">{formatActual(cashBorrowing2026('cash'))}</td>
+                    <td className="border border-gray-300 py-2 px-4 text-right bg-gray-50">{formatActual(cashBorrowingYoy('cash'))}</td>
                   </tr>
                   <tr>
                     <td className="border border-gray-300 py-2 px-4 font-medium sticky left-0 z-10 bg-gray-100 text-gray-800">차입금잔액</td>
-                    <td className="border border-gray-300 py-2 px-4 text-right bg-gray-50">{formatActual(STATIC_CASH_BORROWING.borrowingOpening)}</td>
-                    {!monthsCollapsed && PL_CF_MONTH_LABELS.map((month) => (
-                      <td key={`borrowing-cell-${month}`} className="border border-gray-300 py-2 px-4 text-right bg-gray-50 text-gray-300">
-                        -
-                      </td>
-                    ))}
-                    <td className="border border-gray-300 py-2 px-4 text-right bg-gray-50">{formatKValue(cashBorrowing2026('borrowing'))}</td>
-                    <td className="border border-gray-300 py-2 px-4 text-right bg-gray-50">{formatKValue(cashBorrowingYoy('borrowing', STATIC_CASH_BORROWING.borrowingOpening))}</td>
+                    <td className="border border-gray-300 py-2 px-4 text-right bg-gray-50">{formatActual(cashBorrowingOpening('borrowing'))}</td>
+                    {!monthsCollapsed && PL_CF_MONTH_LABELS.map((month, monthIndex) => {
+                      const monthValue = cashBorrowingMonthly('borrowing', monthIndex);
+                      return (
+                        <td
+                          key={`borrowing-cell-${month}`}
+                          className={`border border-gray-300 py-2 px-4 text-right bg-gray-50 ${monthValue == null ? 'text-gray-300' : ''}`}
+                        >
+                          {monthValue == null ? '-' : formatActual(monthValue)}
+                        </td>
+                      );
+                    })}
+                    <td className="border border-gray-300 py-2 px-4 text-right bg-gray-50">{formatActual(cashBorrowing2026('borrowing'))}</td>
+                    <td className="border border-gray-300 py-2 px-4 text-right bg-gray-50">{formatActual(cashBorrowingYoy('borrowing'))}</td>
                   </tr>
                 </tbody>
               </table>
@@ -551,16 +1185,25 @@ export default function PLCashFlowTab() {
           </div>
 
           <div className="mt-8">
-            <h3 className="text-base font-semibold text-gray-800 mb-2">운전자본표</h3>
+            <div className="flex items-center gap-2 mb-2">
+              <h3 className="text-base font-semibold text-gray-800">운전자본표</h3>
+              <button
+                type="button"
+                onClick={toggleAllWC}
+                className="px-3 py-1 text-xs font-medium rounded-md bg-gray-100 text-gray-700 border border-gray-300 hover:bg-gray-200 transition-colors"
+              >
+                {isWcAllCollapsed ? '전체 펼치기' : '전체 접기'}
+              </button>
+            </div>
             <div className="overflow-x-auto border border-gray-300 rounded-lg shadow-sm">
               <table className="w-full border-collapse text-sm">
                 <thead className="bg-navy text-white">
                   <tr>
                     <th className="border border-gray-300 py-3 px-4 text-left sticky left-0 z-20 bg-navy min-w-[200px]">계정과목</th>
                     <th className="border border-gray-300 py-3 px-4 text-center min-w-[120px]">2025년(기말)</th>
-                    {!monthsCollapsed && PL_CF_MONTH_LABELS.map((month) => (
+                    {!monthsCollapsed && PL_CF_MONTH_LABELS.map((month, monthIndex) => (
                       <th key={`wc-header-${month}`} className="border border-gray-300 py-3 px-4 text-center min-w-[84px]">
-                        {month}
+                        {formatWorkingCapitalMonthHeader(month, monthIndex)}
                       </th>
                     ))}
                     <th className="border border-gray-300 py-3 px-4 text-center min-w-[120px]">2026년(기말)</th>
@@ -613,7 +1256,26 @@ export default function PLCashFlowTab() {
                 </tbody>
               </table>
             </div>
-            <div className="mt-3 flex justify-end">
+            {!wcLegendCollapsed && (
+              <div className="mt-3 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+                <div className="font-semibold mb-1">운전자본 계산 범례</div>
+                <div>매출채권: 직영AR + 대리상AR</div>
+                <div>직영AR: (실적월) 실적값, (계획월) 대리상AR × (2025년 기말 직영AR/대리상AR 비중)</div>
+                <div>대리상AR: (실적월) 실적값, (계획월) 매출채권합계(대리상) ÷ 1.13 × Tag대비원가율</div>
+                <div>재고자산: Tag재고 ÷ 1.13 × Tag대비원가율 × (3월부터 (1-평가감율), 1~2월은 평가감율 미적용)</div>
+                <div>매입채무: 본사AP + 상품AP</div>
+                <div>본사AP: (실적월) 실적값, (계획월) 매입채무합계(HQ) ÷ 1.13 × Tag대비원가율</div>
+                <div>상품AP: (실적월) 실적값, (계획월) 본사AP × (2025년 기말 상품AP/본사AP 비중)</div>
+              </div>
+            )}
+            <div className="mt-3 flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setWcLegendCollapsed((prev) => !prev)}
+                className="px-3 py-1 text-xs font-medium rounded-md bg-gray-100 text-gray-700 border border-gray-300 hover:bg-gray-200 transition-colors"
+              >
+                {wcLegendCollapsed ? '범례 펼치기' : '범례 접기'}
+              </button>
               <button
                 type="button"
                 onClick={() => setWcSupportCollapsed((prev) => !prev)}
@@ -628,12 +1290,12 @@ export default function PLCashFlowTab() {
                 <thead className="bg-slate-700 text-white">
                   <tr>
                     <th className="border border-gray-300 py-2.5 px-4 text-left min-w-[180px]">항목</th>
-                    {PL_CF_MONTH_LABELS.map((month) => (
+                    {PL_CF_MONTH_LABELS.map((month, monthIndex) => (
                       <th
                         key={`wc-support-header-${month}`}
                         className="border border-gray-300 py-2.5 px-4 text-center min-w-[84px]"
                       >
-                        {month}
+                        {formatWorkingCapitalMonthHeader(month, monthIndex)}
                       </th>
                     ))}
                   </tr>
@@ -675,6 +1337,108 @@ export default function PLCashFlowTab() {
                       })}
                     </tr>
                   ))}
+                  <tr className="bg-slate-100 font-semibold">
+                    <td className="border border-gray-300 py-2 px-4 text-slate-800">평가감율</td>
+                    {PL_CF_MONTH_LABELS.map((month) => (
+                      <td
+                        key={`valuation-rate-group-${month}`}
+                        className="border border-gray-300 py-2 px-4 text-center text-gray-300"
+                      >
+                        -
+                      </td>
+                    ))}
+                  </tr>
+                  {TAG_COST_RATIO_BRANDS.map((brand) => (
+                    <tr key={`valuation-rate-row-${brand}`} className="bg-slate-50">
+                      <td className="border border-gray-300 py-2 px-4 text-slate-800" style={{ paddingLeft: '28px' }}>
+                        {brand}
+                      </td>
+                      {PL_CF_MONTH_LABELS.map((month) => (
+                        <td
+                          key={`valuation-rate-value-${brand}-${month}`}
+                          className="border border-gray-300 py-2 px-4 text-right text-slate-700"
+                        >
+                          {formatPercent4(VALUATION_REDUCTION_RATE[brand])}
+                        </td>
+                      ))}
+                    </tr>
+                  ))}
+                  <tr className="bg-slate-100 font-semibold">
+                    <td className="border border-gray-300 py-2 px-4 text-slate-800">매출채권합계(대리상)</td>
+                    {PL_CF_MONTH_LABELS.map((month, monthIndex) => {
+                      const total = TAG_COST_RATIO_BRANDS.reduce<number | null>((sum, brand) => {
+                        const value = shipmentMonthlyByBrand[brand][monthIndex];
+                        if (value == null) return sum;
+                        return (sum ?? 0) + value;
+                      }, null);
+                      const displayK = toDisplayK(total);
+                      return (
+                        <td
+                          key={`ar-total-group-${month}`}
+                          className={`border border-gray-300 py-2 px-4 text-right ${displayK == null ? 'text-gray-300' : 'text-slate-800'}`}
+                        >
+                          {displayK == null ? '-' : formatKValue(displayK)}
+                        </td>
+                      );
+                    })}
+                  </tr>
+                  {TAG_COST_RATIO_BRANDS.map((brand) => (
+                    <tr key={`ar-total-row-${brand}`} className="bg-slate-50">
+                      <td className="border border-gray-300 py-2 px-4 text-slate-800" style={{ paddingLeft: '28px' }}>
+                        {brand}
+                      </td>
+                      {PL_CF_MONTH_LABELS.map((month, monthIndex) => {
+                        const monthValue = shipmentMonthlyByBrand[brand][monthIndex];
+                        const displayK = toDisplayK(monthValue);
+                        return (
+                          <td
+                            key={`ar-total-value-${brand}-${month}`}
+                            className={`border border-gray-300 py-2 px-4 text-right ${displayK == null ? 'text-gray-300' : 'text-slate-700'}`}
+                          >
+                            {displayK == null ? '-' : formatKValue(displayK)}
+                          </td>
+                        );
+                      })}
+                    </tr>
+                  ))}
+                  <tr className="bg-slate-100 font-semibold">
+                    <td className="border border-gray-300 py-2 px-4 text-slate-800">매입채무합계(HQ)</td>
+                    {PL_CF_MONTH_LABELS.map((month, monthIndex) => {
+                      const total = TAG_COST_RATIO_BRANDS.reduce<number | null>((sum, brand) => {
+                        const value = purchaseMonthlyByBrand[brand][monthIndex];
+                        if (value == null) return sum;
+                        return (sum ?? 0) + value;
+                      }, null);
+                      const displayK = toDisplayK(total);
+                      return (
+                        <td
+                          key={`ap-total-group-${month}`}
+                          className={`border border-gray-300 py-2 px-4 text-right ${displayK == null ? 'text-gray-300' : 'text-slate-800'}`}
+                        >
+                          {displayK == null ? '-' : formatKValue(displayK)}
+                        </td>
+                      );
+                    })}
+                  </tr>
+                  {TAG_COST_RATIO_BRANDS.map((brand) => (
+                    <tr key={`ap-total-row-${brand}`} className="bg-slate-50">
+                      <td className="border border-gray-300 py-2 px-4 text-slate-800" style={{ paddingLeft: '28px' }}>
+                        {brand}
+                      </td>
+                      {PL_CF_MONTH_LABELS.map((month, monthIndex) => {
+                        const monthValue = purchaseMonthlyByBrand[brand][monthIndex];
+                        const displayK = toDisplayK(monthValue);
+                        return (
+                          <td
+                            key={`ap-total-value-${brand}-${month}`}
+                            className={`border border-gray-300 py-2 px-4 text-right ${displayK == null ? 'text-gray-300' : 'text-slate-700'}`}
+                          >
+                            {displayK == null ? '-' : formatKValue(displayK)}
+                          </td>
+                        );
+                      })}
+                    </tr>
+                  ))}
                   <tr className="bg-white font-semibold">
                     <td className="border border-gray-300 py-2 px-4 text-slate-800">Tag대비원가율</td>
                     {PL_CF_MONTH_LABELS.map((month) => (
@@ -708,14 +1472,14 @@ export default function PLCashFlowTab() {
           </div>
 
           <div className="mt-8">
-            <h3 className="text-base font-semibold text-gray-800 mb-2">대리상 여신회수 계획 ({STATIC_CREDIT_RECOVERY.baseYearMonth} 기준)</h3>
+            <h3 className="text-base font-semibold text-gray-800 mb-2">대리상 여신회수 계획 ({creditRecovery.baseYearMonth} 기준)</h3>
             <div className="overflow-x-auto border border-gray-300 rounded-lg shadow-sm">
               <table className="w-full border-collapse text-sm">
                 <thead className="bg-navy text-white">
                   <tr>
                     <th className="border border-gray-300 py-3 px-4 text-center min-w-[100px]">대리상선수금</th>
                     <th className="border border-gray-300 py-3 px-4 text-center min-w-[100px]">대리상 채권</th>
-                    {STATIC_CREDIT_RECOVERY.headers.map((header) => (
+                    {creditRecoveryHeaders.map((header) => (
                       <th key={header} className="border border-gray-300 py-3 px-4 text-center min-w-[100px]">
                         {header}
                       </th>
@@ -724,10 +1488,12 @@ export default function PLCashFlowTab() {
                 </thead>
                 <tbody className="bg-gray-50">
                   <tr>
-                    <td className="border border-gray-300 py-2 px-4 text-right">{formatActual(STATIC_CREDIT_RECOVERY.dealerAdvance)}</td>
-                    <td className="border border-gray-300 py-2 px-4 text-right">{formatActual(STATIC_CREDIT_RECOVERY.dealerReceivable)}</td>
-                    {STATIC_CREDIT_RECOVERY.headers.map((header) => (
-                      <td key={header} className="border border-gray-300 py-2 px-4 text-right"></td>
+                    <td className="border border-gray-300 py-2 px-4 text-right">{formatActual(creditRecovery.dealerAdvance)}</td>
+                    <td className="border border-gray-300 py-2 px-4 text-right">{formatActual(creditRecovery.dealerReceivable)}</td>
+                    {creditRecovery.recoveries.map((value, index) => (
+                      <td key={`credit-recovery-${index}`} className="border border-gray-300 py-2 px-4 text-right">
+                        {formatActual(value)}
+                      </td>
                     ))}
                   </tr>
                 </tbody>
@@ -745,3 +1511,5 @@ export default function PLCashFlowTab() {
     </div>
   );
 }
+
+

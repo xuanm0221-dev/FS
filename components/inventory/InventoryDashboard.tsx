@@ -7,7 +7,7 @@ import { RetailSalesResponse, RetailSalesRow } from '@/lib/retail-sales-types';
 import type { ShipmentSalesResponse } from '@/app/api/inventory/shipment-sales/route';
 import type { PurchaseResponse } from '@/app/api/inventory/purchase/route';
 import { buildTableDataFromMonthly } from '@/lib/build-inventory-from-monthly';
-import { buildTableData, applyAccTargetWoiOverlay, applyHqSellInSellOutPlanOverlay } from '@/lib/inventory-calc';
+import { buildTableData, applyAccTargetWoiOverlay, applyHqSellInSellOutPlanOverlay, rebuildTableFromLeafs } from '@/lib/inventory-calc';
 import {
   saveSnapshot,
   loadSnapshot,
@@ -84,7 +84,7 @@ const TXT_EXPAND = '▼ 펼치기';
 const MLB_1YEAR_OVERRIDE_K = 1_479_053;
 
 /** 본사 의류매입 표(annualPlan) → hqSellInPlan 시즌 행 매핑 */
-const DRIVER_COLUMN_HEADERS = ['전년', '계획', 'YOY', 'Rolling', 'YOY', '계획대비 증감'] as const;
+const DRIVER_COLUMN_HEADERS = ['전년', '계획금액', '계획YOY', 'Rolling금액', 'RollingYOY', '계획대비 증감', '계획대비 증감(%)'] as const;
 const INDEPENDENT_DRIVER_COLUMN_HEADERS = ['Rolling'] as const;
 const INDEPENDENT_DRIVER_ROWS = ['대리상 리테일 성장율', '본사 리테일 성장율'] as const;
 const DEPENDENT_DRIVER_ROWS = ['대리상출고', '본사상품매입', '본사기말재고'] as const;
@@ -114,8 +114,8 @@ function getDependentDriverCellValue(
     return row?.closing;
   };
   if (column === '전년') return formatDriverNumber(pickValue(prevTotalRow));
-  if (column === 'Rolling') return formatDriverNumber(pickValue(currentTotalRow));
-  if (column === 'YOY' && columnIndex === 4) {
+  if (column === 'Rolling금액') return formatDriverNumber(pickValue(currentTotalRow));
+  if (column === 'RollingYOY') {
     const currentValue = pickValue(currentTotalRow);
     const prevValue = pickValue(prevTotalRow);
     if (currentValue == null || prevValue == null || !Number.isFinite(currentValue) || !Number.isFinite(prevValue) || prevValue === 0) {
@@ -1495,19 +1495,22 @@ export default function InventoryDashboard() {
     );
   }, [year, brand, prevYearMonthlyData, prevYearRetailData, prevYearShipmentData, prevYearPurchaseData, prevYearMonthlyDataByBrand, prevYearRetailDataByBrand, prevYearShipmentDataByBrand]);
 
-  // 2026 대리상 리테일 연간합계 = 2025 Sell-out × 성장률
+  // 2026 대리상 리테일 연간합계 = 2025 Sell-out × 성장률 (소계=leaf 합산)
   const retailDealerAnnualTotalByRowKey = useMemo<Record<string, number | null> | null>(() => {
     if (year !== 2026 || !prevYearTopTableData) return null;
     const factor = 1 + growthRate / 100;
     const result: Record<string, number | null> = {};
     for (const row of prevYearTopTableData.dealer.rows) {
-      const retailKey = row.key === '재고자산합계' ? '매출합계' : row.key;
-      result[retailKey] = Math.round(row.sellOutTotal * factor) * 1000;
+      if (!row.isLeaf) continue;
+      result[row.key] = Math.round(row.sellOutTotal * factor * 1000);
     }
-    // MLB 브랜드만 1년차 연간합계 별도 목표값 적용
     if (brand === 'MLB') {
       result['1년차'] = MLB_1YEAR_OVERRIDE_K * 1000;
     }
+    const sumKeys = (keys: readonly string[]) => keys.reduce((s, k) => s + (result[k] ?? 0), 0);
+    result['의류합계'] = sumKeys(SEASON_KEYS);
+    result['ACC합계'] = sumKeys(ACC_KEYS);
+    result['매출합계'] = result['의류합계'] + result['ACC합계'];
     return result;
   }, [year, brand, prevYearTopTableData, growthRate]);
 
@@ -1554,15 +1557,19 @@ export default function InventoryDashboard() {
     return result;
   }, [year, adjustedDealerRetailData, retailDealerAnnualTotalByRowKey]);
 
-  // 2026 본사 리테일 연간합계 = 2025 본사 Sell-out × 본사 성장률
+  // 2026 본사 리테일 연간합계 = 2025 본사 Sell-out × 본사 성장률 (소계=leaf 합산)
   const retailHqAnnualTotalByRowKey = useMemo<Record<string, number | null> | null>(() => {
     if (year !== 2026 || !prevYearTopTableData) return null;
     const factor = 1 + growthRateHq / 100;
     const result: Record<string, number | null> = {};
     for (const row of prevYearTopTableData.hq.rows) {
-      const retailKey = row.key === '재고자산합계' ? '매출합계' : row.key;
-      result[retailKey] = Math.round((row.hqSalesTotal ?? 0) * factor) * 1000;
+      if (!row.isLeaf) continue;
+      result[row.key] = Math.round((row.hqSalesTotal ?? 0) * factor * 1000);
     }
+    const sumKeys = (keys: readonly string[]) => keys.reduce((s, k) => s + (result[k] ?? 0), 0);
+    result['의류합계'] = sumKeys(SEASON_KEYS);
+    result['ACC합계'] = sumKeys(ACC_KEYS);
+    result['매출합계'] = result['의류합계'] + result['ACC합계'];
     return result;
   }, [year, prevYearTopTableData, growthRateHq]);
 
@@ -1620,39 +1627,105 @@ export default function InventoryDashboard() {
       return monthly.map((v) => Math.round(v * (newTotal / oldTotal)));
     };
 
-    // 대리상: sellOut / sellOutTotal 교체
-    const dealerRows = topTableData.dealer.rows.map((row) => {
-      const retailKey = inventoryKeyToRetailKey(row.key);
-      const newTotalWon = retailDealerAnnualTotalByRowKey?.[retailKey] ?? null;
-      if (newTotalWon == null) return row;
-      const newTotalK = newTotalWon / 1000;
-      return {
-        ...row,
-        sellOut: scaleMonthly(row.sellOut, row.sellOutTotal, newTotalK),
-        sellOutTotal: newTotalK,
-      };
-    });
+    // ACC Sell-in 재계산 대상 키 (Sell-out 교체 후 기말+Sell-out-기초로 역산)
+    const ACC_LEAF_KEYS = new Set(['신발', '모자', '가방', '기타']);
 
-    // 본사: hqSales / hqSalesTotal 교체 (sellOut/대리상출고는 유지)
-    const hqRows = topTableData.hq.rows.map((row) => {
-      const retailKey = inventoryKeyToRetailKey(row.key);
-      const newTotalWon = retailHqAnnualTotalByRowKey?.[retailKey] ?? null;
-      if (newTotalWon == null) return row;
-      const newTotalK = newTotalWon / 1000;
-      const oldHqTotal = row.hqSalesTotal ?? 0;
-      const newHqSales = row.hqSales
-        ? scaleMonthly(row.hqSales, oldHqTotal, newTotalK)
-        : undefined;
-      return {
-        ...row,
-        hqSales: newHqSales,
-        hqSalesTotal: newTotalK,
-      };
-    });
+    // 대리상: leaf 행만 수정 후 rebuildTableFromLeafs로 소계 재계산
+    const dealerLeafRows = topTableData.dealer.rows
+      .filter((row) => row.isLeaf)
+      .map((row) => {
+        const retailKey = inventoryKeyToRetailKey(row.key);
+        const newTotalWon = retailDealerAnnualTotalByRowKey?.[retailKey] ?? null;
+
+        let updatedRow = row;
+        if (newTotalWon != null) {
+          const newSellOutK = newTotalWon / 1000;
+          updatedRow = {
+            ...updatedRow,
+            sellOut: scaleMonthly(row.sellOut, row.sellOutTotal, newSellOutK),
+            sellOutTotal: newSellOutK,
+          };
+        }
+
+        if (ACC_LEAF_KEYS.has(row.key)) {
+          // ACC: Sell-in = 기말 + Sell-out - 기초
+          const newSellInTotal = updatedRow.closing + updatedRow.sellOutTotal - updatedRow.opening;
+          updatedRow = {
+            ...updatedRow,
+            sellIn: scaleMonthly(updatedRow.sellIn, updatedRow.sellInTotal, newSellInTotal),
+            sellInTotal: newSellInTotal,
+          };
+        } else {
+          // 의류: 기말재고 = 기초 + Sell-in - Sell-out
+          const newClosing = updatedRow.opening + updatedRow.sellInTotal - updatedRow.sellOutTotal;
+          updatedRow = {
+            ...updatedRow,
+            closing: newClosing,
+            delta: newClosing - updatedRow.opening,
+          };
+        }
+
+        return updatedRow;
+      });
+    const dealerRows = rebuildTableFromLeafs(dealerLeafRows, 366);
+
+    // 대리상 ACC Sell-in 결과를 본사 ACC 대리상출고에 연동하기 위한 Map
+    const dealerAccSellInMap = new Map(
+      dealerLeafRows
+        .filter((row) => ACC_LEAF_KEYS.has(row.key))
+        .map((row) => [row.key, { sellIn: row.sellIn, sellInTotal: row.sellInTotal }])
+    );
+
+    // 본사: leaf 행만 수정 후 rebuildTableFromLeafs로 소계 재계산
+    // - ACC: 대리상출고(sellOut) = dealerLeafRows에서 계산된 ACC Sell-in으로 연동
+    // - 의류: hqSales/hqSalesTotal만 교체 (sellOut 건드리지 않음)
+    const hqLeafRows = topTableData.hq.rows
+      .filter((row) => row.isLeaf)
+      .map((row) => {
+        const retailKey = inventoryKeyToRetailKey(row.key);
+        const newTotalWon = retailHqAnnualTotalByRowKey?.[retailKey] ?? null;
+        const newTotalK = newTotalWon != null ? newTotalWon / 1000 : null;
+        const oldHqTotal = row.hqSalesTotal ?? 0;
+        const newHqSales =
+          newTotalK != null && row.hqSales
+            ? scaleMonthly(row.hqSales, oldHqTotal, newTotalK)
+            : row.hqSales;
+
+        // ACC: 대리상출고(sellOut) = 대리상 ACC Sell-in으로 연동
+        // 기말재고는 topTableData 원래 값 유지 (applyAccTargetWoiOverlay의 목표WOI 기준값)
+        // 상품매입(sellIn) = 기말(유지) + 새 대리상출고 + 본사판매 - 기초 로 재계산
+        if (ACC_LEAF_KEYS.has(row.key)) {
+          const dealerAcc = dealerAccSellInMap.get(row.key);
+          if (dealerAcc) {
+            const newSellOutTotal = dealerAcc.sellInTotal;
+            const newSellOut = scaleMonthly(row.sellOut, row.sellOutTotal, newSellOutTotal);
+            const hqSalesTotal = newTotalK ?? (row.hqSalesTotal ?? 0);
+            const newSellInTotal = Math.max(0, row.closing + newSellOutTotal + hqSalesTotal - row.opening);
+            const newSellIn = scaleMonthly(row.sellIn, row.sellInTotal, newSellInTotal);
+            return {
+              ...row,
+              sellIn: newSellIn,
+              sellInTotal: newSellInTotal,
+              sellOut: newSellOut,
+              sellOutTotal: newSellOutTotal,
+              hqSales: newHqSales,
+              hqSalesTotal: newTotalK ?? row.hqSalesTotal,
+            };
+          }
+        }
+
+        // 의류: hqSales만 교체
+        return {
+          ...row,
+          hqSales: newHqSales,
+          hqSalesTotal: newTotalK ?? row.hqSalesTotal,
+        };
+      });
+    const hqRows = rebuildTableFromLeafs(hqLeafRows, 366);
 
     return {
-      dealer: { ...topTableData.dealer, rows: dealerRows as InventoryTableData['rows'] },
-      hq: { ...topTableData.hq, rows: hqRows as InventoryTableData['rows'] },
+      dealer: { rows: dealerRows },
+      hq: { rows: hqRows },
     };
   }, [year, topTableData, retailDealerAnnualTotalByRowKey, retailHqAnnualTotalByRowKey]);
 
@@ -2674,15 +2747,18 @@ export default function InventoryDashboard() {
                   <table key={`dependent-driver-${DRIVER_COLUMN_HEADERS.join('|')}`} className="min-w-full border-collapse text-xs">
                     <thead>
                       <tr>
-                        <th className="min-w-[140px] border border-slate-300 bg-slate-900 px-3 py-2.5 text-left text-[11px] font-semibold tracking-wide text-white">항목</th>
-                        {DRIVER_COLUMN_HEADERS.map((column, columnIndex) => (
-                          <th
-                            key={`dependent-${columnIndex}`}
-                            className="min-w-[100px] border border-slate-300 bg-slate-900 px-3 py-2.5 text-center text-[11px] font-semibold tracking-wide text-white"
-                          >
-                            {column}
-                          </th>
-                        ))}
+                        <th rowSpan={2} className="min-w-[140px] border border-slate-300 bg-slate-900 px-3 py-2.5 text-left text-[11px] font-semibold tracking-wide text-white">항목</th>
+                        <th rowSpan={2} className="min-w-[90px] border border-slate-300 bg-slate-900 px-3 py-2.5 text-center text-[11px] font-semibold tracking-wide text-white">전년</th>
+                        <th colSpan={2} className="border border-slate-300 bg-slate-900 px-3 py-2.5 text-center text-[11px] font-semibold tracking-wide text-white">계획</th>
+                        <th colSpan={4} className="border border-slate-300 bg-slate-900 px-3 py-2.5 text-center text-[11px] font-semibold tracking-wide text-white">Rolling</th>
+                      </tr>
+                      <tr>
+                        <th className="min-w-[90px] border border-slate-300 bg-slate-800 px-3 py-2 text-center text-[11px] font-semibold tracking-wide text-white">금액</th>
+                        <th className="min-w-[70px] border border-slate-300 bg-slate-800 px-3 py-2 text-center text-[11px] font-semibold tracking-wide text-white">YOY</th>
+                        <th className="min-w-[90px] border border-slate-300 bg-slate-800 px-3 py-2 text-center text-[11px] font-semibold tracking-wide text-white">금액</th>
+                        <th className="min-w-[70px] border border-slate-300 bg-slate-800 px-3 py-2 text-center text-[11px] font-semibold tracking-wide text-white">YOY</th>
+                        <th className="min-w-[100px] border border-slate-300 bg-slate-800 px-3 py-2 text-center text-[11px] font-semibold tracking-wide text-white">계획대비 증감</th>
+                        <th className="min-w-[100px] border border-slate-300 bg-slate-800 px-3 py-2 text-center text-[11px] font-semibold tracking-wide text-white">계획대비 증감(%)</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -2719,15 +2795,21 @@ export default function InventoryDashboard() {
                               planValue != null && rollingValue != null && Number.isFinite(planValue) && Number.isFinite(rollingValue) && planValue !== 0
                                 ? `${Math.round((rollingValue / planValue) * 100).toLocaleString()}%`
                                 : '-';
+                            const planVsRollingAmount =
+                              planValue != null && rollingValue != null && Number.isFinite(planValue) && Number.isFinite(rollingValue)
+                                ? formatDriverNumber(rollingValue - planValue)
+                                : '-';
 
                             const displayValue =
-                              column === '계획'
+                              column === '계획금액'
                                 ? (planValue == null ? '-' : formatDriverNumber(planValue))
-                                : column === 'YOY' && columnIndex === 2
+                                : column === '계획YOY'
                                   ? yoyByPlanVsPrev
                                   : column === '계획대비 증감'
-                                    ? planVsRolling
-                                    : getDependentDriverCellValue(column, columnIndex, rowIndex, hqDriverTotalRow, prevYearHqDriverTotalRow);
+                                    ? planVsRollingAmount
+                                    : column === '계획대비 증감(%)'
+                                      ? planVsRolling
+                                      : getDependentDriverCellValue(column, columnIndex, rowIndex, hqDriverTotalRow, prevYearHqDriverTotalRow);
 
                             return (
                               <td key={`derived-${rowLabel}-${columnIndex}`} className="border-b border-slate-200 px-3 py-2.5 text-right text-sm font-semibold text-slate-950">
@@ -2744,7 +2826,7 @@ export default function InventoryDashboard() {
                             <td key={`${rowLabel}-${columnIndex}`} className="border-b border-slate-200 px-3 py-2 text-right text-slate-900">
                               {column === '전년'
                                 ? getDependentDriverCellValue(column, columnIndex, rowIndex, hqDriverTotalRow, prevYearHqDriverTotalRow)
-                                : column === 'Rolling'
+                                : column === 'Rolling금액'
                                 ? rowLabel === '대리상출고'
                                   ? formatDriverNumber(hqDriverTotalRow?.sellOutTotal)
                                   : rowLabel === '본사상품매입'

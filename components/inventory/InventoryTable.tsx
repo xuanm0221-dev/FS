@@ -492,7 +492,7 @@ export default function InventoryTable({
                 <div>⑥ 대리상 출고예정 버퍼 = 대리상 주간매출 × 본사 목표재고주수 (WOI 열)</div>
                 <div>⑦ 본사 기말재고 = ⑤ + ⑥</div>
                 <div>⑧ 본사 대리상출고 = 대리상 ACC Sell-in (④의 결과)</div>
-                <div>⑨ 본사 의류매입 = 기말+본사판매+대리상출고-기초</div>
+                <div>⑨ 본사 ACC매입 = 기말+본사판매+대리상출고-기초</div>
               </div>
             </div>
           ) : (

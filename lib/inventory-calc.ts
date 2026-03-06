@@ -580,7 +580,7 @@ function recalcLeafFromWoi(row: InventoryRow, newWoi: number, yearDays: number =
   };
 }
 
-function rebuildTableFromLeafs(leafRows: InventoryRow[], yearDays: number = 365): InventoryRow[] {
+export function rebuildTableFromLeafs(leafRows: InventoryRow[], yearDays: number = 365): InventoryRow[] {
   const clothingLeafs = SEASON_KEYS.map((k) => leafRows.find((r) => r.key === k)).filter(Boolean) as InventoryRow[];
   const accLeafs = ACC_KEYS.map((k) => leafRows.find((r) => r.key === k)).filter(Boolean) as InventoryRow[];
   const clothingSubtotal = calcSubtotal('의류합계', clothingLeafs, yearDays);

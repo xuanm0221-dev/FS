@@ -1,4 +1,4 @@
-﻿'use client';
+'use client';
 
 import { useEffect, useMemo, useState } from 'react';
 import { formatNumber, getRecoveryMonthLabelsAsN월 } from '@/lib/utils';

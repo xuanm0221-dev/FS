@@ -161,75 +161,77 @@ export default function InventoryFilterBar({
 
         <div className="h-4 w-px bg-gray-300" />
 
-        {/* 재고,리테일,출고,입고 저장 / 저장완료+재계산 */}
-        {!snapshotSaved ? (
-          <button
-            type="button"
-            onClick={onSave}
-            disabled={!canSave || recalcLoading}
-            className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded border transition-colors ${
-              canSave
-                ? 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50 hover:border-blue-400'
-                : 'bg-gray-100 text-gray-400 border-gray-200 cursor-not-allowed'
-            }`}
-            title="현재 데이터를 로컬에 저장합니다"
-          >
-            <svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor" className="text-gray-500">
-              <path d="M10 1H3L1 3v8h10V1zm-4 9a2 2 0 1 1 0-4 2 2 0 0 1 0 4zM3 1v3h5V1H3z"/>
-            </svg>
-            재고,리테일,출고,입고 저장
-          </button>
-        ) : (
-          <div className="relative flex items-center gap-2" ref={dropdownRef}>
-            <div className="flex">
-              <button
-                type="button"
-                onClick={onSave}
-                disabled={recalcLoading}
-                className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-l border bg-[#8b7bb8] text-white border-[#7a6aa7] hover:bg-[#7a6aa7] transition-colors"
-                title="다시 저장"
-              >
-                {recalcLoading ? (
-                  <svg className="animate-spin" width="12" height="12" viewBox="0 0 12 12" fill="none">
-                    <circle cx="6" cy="6" r="5" stroke="currentColor" strokeWidth="2" strokeDasharray="8 8" />
-                  </svg>
-                ) : (
-                  <svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor">
-                    <path d="M1.5 6.5L4.5 9.5L10.5 3" stroke="currentColor" strokeWidth="1.8" fill="none" strokeLinecap="round" strokeLinejoin="round"/>
-                  </svg>
-                )}
-                재고,리테일,출고,입고 저장완료
-              </button>
-              <button
-                type="button"
-                onClick={() => setDropdownOpen((v) => !v)}
-                disabled={recalcLoading}
-                className="flex items-center justify-center px-2 py-1.5 text-xs font-medium rounded-r border border-l-0 bg-[#8b7bb8] text-white border-[#7a6aa7] hover:bg-[#7a6aa7] transition-colors"
-                aria-label="재계산 메뉴"
-              >
-                {dropdownOpen ? '▲' : '▼'}
-              </button>
-            </div>
-            {dropdownOpen && (
-              <div className="absolute top-full right-0 mt-1 bg-white border border-gray-200 rounded shadow-md z-50 min-w-[130px] py-1">
+        {/* 재고,리테일,출고,입고 저장 / 저장완료+재계산 — 2025년은 확정 실적이므로 미표시 */}
+        {year !== 2025 && (
+          !snapshotSaved ? (
+            <button
+              type="button"
+              onClick={onSave}
+              disabled={!canSave || recalcLoading}
+              className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded border transition-colors ${
+                canSave
+                  ? 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50 hover:border-blue-400'
+                  : 'bg-gray-100 text-gray-400 border-gray-200 cursor-not-allowed'
+              }`}
+              title="현재 데이터를 로컬에 저장합니다"
+            >
+              <svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor" className="text-gray-500">
+                <path d="M10 1H3L1 3v8h10V1zm-4 9a2 2 0 1 1 0-4 2 2 0 0 1 0 4zM3 1v3h5V1H3z"/>
+              </svg>
+              재고,리테일,출고,입고 저장
+            </button>
+          ) : (
+            <div className="relative flex items-center gap-2" ref={dropdownRef}>
+              <div className="flex">
                 <button
                   type="button"
-                  onClick={() => { onRecalc('current'); setDropdownOpen(false); }}
-                  className="w-full text-left px-3 py-2 text-xs text-gray-700 hover:bg-gray-50 transition-colors"
+                  onClick={onSave}
+                  disabled={recalcLoading}
+                  className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-l border bg-[#8b7bb8] text-white border-[#7a6aa7] hover:bg-[#7a6aa7] transition-colors"
+                  title="다시 저장"
                 >
-                  당월 재계산
+                  {recalcLoading ? (
+                    <svg className="animate-spin" width="12" height="12" viewBox="0 0 12 12" fill="none">
+                      <circle cx="6" cy="6" r="5" stroke="currentColor" strokeWidth="2" strokeDasharray="8 8" />
+                    </svg>
+                  ) : (
+                    <svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor">
+                      <path d="M1.5 6.5L4.5 9.5L10.5 3" stroke="currentColor" strokeWidth="1.8" fill="none" strokeLinecap="round" strokeLinejoin="round"/>
+                    </svg>
+                  )}
+                  재고,리테일,출고,입고 저장완료
                 </button>
-                <div className="border-t border-gray-100 mx-2" />
                 <button
                   type="button"
-                  onClick={() => { onRecalc('annual'); setDropdownOpen(false); }}
-                  className="w-full text-left px-3 py-2 text-xs text-gray-700 hover:bg-gray-50 transition-colors"
+                  onClick={() => setDropdownOpen((v) => !v)}
+                  disabled={recalcLoading}
+                  className="flex items-center justify-center px-2 py-1.5 text-xs font-medium rounded-r border border-l-0 bg-[#8b7bb8] text-white border-[#7a6aa7] hover:bg-[#7a6aa7] transition-colors"
+                  aria-label="재계산 메뉴"
                 >
-                  연간 재계산
+                  {dropdownOpen ? '▲' : '▼'}
                 </button>
               </div>
-            )}
-          </div>
+              {dropdownOpen && (
+                <div className="absolute top-full right-0 mt-1 bg-white border border-gray-200 rounded shadow-md z-50 min-w-[130px] py-1">
+                  <button
+                    type="button"
+                    onClick={() => { onRecalc('current'); setDropdownOpen(false); }}
+                    className="w-full text-left px-3 py-2 text-xs text-gray-700 hover:bg-gray-50 transition-colors"
+                  >
+                    당월 재계산
+                  </button>
+                  <div className="border-t border-gray-100 mx-2" />
+                  <button
+                    type="button"
+                    onClick={() => { onRecalc('annual'); setDropdownOpen(false); }}
+                    className="w-full text-left px-3 py-2 text-xs text-gray-700 hover:bg-gray-50 transition-colors"
+                  >
+                    연간 재계산
+                  </button>
+                </div>
+              )}
+            </div>
+          )
         )}
 
         <div

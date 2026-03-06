@@ -61,7 +61,7 @@ const ANNUAL_PLAN_SEASON_LABELS: Record<AnnualPlanSeason, string> = {
   next: '차기시즌',
   past: '과시즌',
 };
-const OTB_SEASONS_LIST = ['27F', '27S', '26F', '26S'] as const;
+const OTB_SEASONS_LIST = ['27F', '27S', '26F', '26S', '25F'] as const;
 type OtbSeason = typeof OTB_SEASONS_LIST[number];
 type OtbBrand = AnnualPlanBrand;
 type OtbData = Record<OtbSeason, Record<OtbBrand, number>>;
@@ -79,6 +79,9 @@ const TXT_SAVE = '저장';
 const TXT_PLAN_ICON = '📋';
 const TXT_COLLAPSE = '▲ 접기';
 const TXT_EXPAND = '▼ 펼치기';
+
+/** MLB 브랜드 대리상 1년차 연간합계 별도 목표 (CNY K) */
+const MLB_1YEAR_OVERRIDE_K = 1_479_053;
 
 /** 본사 의류매입 표(annualPlan) → hqSellInPlan 시즌 행 매핑 */
 const DRIVER_COLUMN_HEADERS = ['전년', '계획', 'YOY', 'Rolling', 'YOY', '계획대비 증감'] as const;
@@ -155,7 +158,7 @@ function otbToDealerSellInPlan(otbData: OtbData | null, planBrand: OtbBrand): Pa
   const out: Partial<Record<RowKey, number>> = {};
   out['당년F'] = Math.round((otbData['26F']?.[planBrand] ?? 0) / 1000);
   out['당년S'] = Math.round((otbData['26S']?.[planBrand] ?? 0) / 1000);
-  out['1년차'] = 0;
+  out['1년차'] = Math.round((otbData['25F']?.[planBrand] ?? 0) / 1000);
   out['2년차'] = 0;
   out['차기시즌'] = Math.round(((otbData['27F']?.[planBrand] ?? 0) + (otbData['27S']?.[planBrand] ?? 0)) / 1000);
   out['과시즌'] = 0;
@@ -1321,18 +1324,7 @@ export default function InventoryDashboard() {
 
   const effectiveRetailData = useMemo<RetailSalesResponse | null>(() => {
     if (!retailData) return null;
-    if (year === 2025 && monthlyData && shipmentData) {
-      return {
-        ...retailData,
-        dealer: {
-          rows: buildAdjustedDealerRetailRows(
-            retailData.dealer.rows,
-            monthlyData.dealer.rows,
-            shipmentData.data.rows,
-          ),
-        },
-      };
-    }
+    // 2025년은 연간 확정 실적이므로 closedThrough 관계없이 원본 데이터 그대로 사용
     if (year === 2026 && prevYearMonthlyData && prevYearRetailData && prevYearShipmentData) {
       return applyAdjustedDealerRetailPlanBase(
         retailData,
@@ -1343,12 +1335,7 @@ export default function InventoryDashboard() {
       );
     }
     return retailData;
-  }, [year, retailData, monthlyData, shipmentData, prevYearMonthlyData, prevYearRetailData, prevYearShipmentData, growthRate]);
-
-  const adjustedDealerRetailTable = useMemo<TableData | null>(() => {
-    if (year !== 2025 || !effectiveRetailData) return null;
-    return { rows: effectiveRetailData.dealer.rows as TableData['rows'] };
-  }, [year, effectiveRetailData]);
+  }, [year, retailData, prevYearMonthlyData, prevYearRetailData, prevYearShipmentData, growthRate]);
 
   const topTableData = useMemo(() => {
     if (
@@ -1435,6 +1422,239 @@ export default function InventoryDashboard() {
     }
     return built;
   }, [year, brand, monthlyData, effectiveRetailData, shipmentData, purchaseData, monthlyDataByBrand, retailDataByBrand, shipmentDataByBrand, purchaseDataByBrand, prevYearMonthlyDataByBrand, prevYearRetailDataByBrand, prevYearShipmentDataByBrand, annualShipmentPlan2026, accTargetWoiDealer, accTargetWoiHq, accHqHoldingWoi, hqSellOutPlan, growthRate, otbData]);
+
+  // 대리상 리테일매출(보정) 연간 합계 = 대리상 재고자산표 Sell-out (K→원 변환)
+  // 재고자산표 key('재고자산합계') → 리테일표 key('매출합계') 매핑
+  // 대리상 리테일매출(보정) 연간 합계 = 대리상 재고자산표 Sell-out (K→원 변환)
+  const adjustedRetailAnnualTotalByRowKey = useMemo<Record<string, number | null> | null>(() => {
+    if (year !== 2025 || !topTableData) return null;
+    const result: Record<string, number | null> = {};
+    for (const row of topTableData.dealer.rows) {
+      const retailKey = row.key === '재고자산합계' ? '매출합계' : row.key;
+      result[retailKey] = row.sellOutTotal * 1000;
+    }
+    return result;
+  }, [year, topTableData]);
+
+  // 대리상 리테일매출(보정): 연간합계를 실제 리테일 월별 비중으로 배분
+  const adjustedDealerRetailTable = useMemo<TableData | null>(() => {
+    if (year !== 2025 || !effectiveRetailData || !adjustedRetailAnnualTotalByRowKey) return null;
+    const rows = effectiveRetailData.dealer.rows.map((row) => {
+      const annualTotal = adjustedRetailAnnualTotalByRowKey[row.key] ?? null;
+      const actual = row.monthly;
+      const actualSum = actual.reduce<number>((s, v) => s + (v ?? 0), 0);
+      const monthly = actual.map((v) =>
+        v != null && annualTotal != null && actualSum > 0
+          ? Math.round(annualTotal * (v / actualSum))
+          : null
+      );
+      return { ...row, opening: null, monthly } as TableData['rows'][number];
+    });
+    return { rows };
+  }, [year, effectiveRetailData, adjustedRetailAnnualTotalByRowKey]);
+
+  // 검증: 1~12월 합계 - 연간합계 (0이면 정상)
+  const adjustedRetailValidationByRowKey = useMemo<Record<string, number | null> | null>(() => {
+    if (!adjustedDealerRetailTable || !adjustedRetailAnnualTotalByRowKey) return null;
+    const result: Record<string, number | null> = {};
+    for (const row of adjustedDealerRetailTable.rows) {
+      const monthlySum = row.monthly.reduce<number | null>(
+        (s, v) => (v == null ? s : (s ?? 0) + v),
+        null,
+      );
+      const annualTotal = adjustedRetailAnnualTotalByRowKey[row.key] ?? null;
+      result[row.key] =
+        monthlySum != null && annualTotal != null ? monthlySum - annualTotal : null;
+    }
+    return result;
+  }, [adjustedDealerRetailTable, adjustedRetailAnnualTotalByRowKey]);
+
+  // 2026년: 2025 재고자산표 Sell-out 계산용 (단일/전체 브랜드 모두 지원)
+  const prevYearTopTableData = useMemo(() => {
+    if (year !== 2026) return null;
+    if (brand === '전체') {
+      if (BRANDS_TO_AGGREGATE.some((b) => !prevYearMonthlyDataByBrand[b] || !prevYearRetailDataByBrand[b] || !prevYearShipmentDataByBrand[b])) return null;
+      const perBrand = BRANDS_TO_AGGREGATE.map((b) =>
+        buildTableDataFromMonthly(
+          prevYearMonthlyDataByBrand[b]!,
+          prevYearRetailDataByBrand[b]!,
+          prevYearShipmentDataByBrand[b]!,
+          undefined,
+          2025,
+        )
+      );
+      return aggregateTopTables(perBrand, 2025);
+    }
+    if (!prevYearMonthlyData || !prevYearRetailData || !prevYearShipmentData) return null;
+    return buildTableDataFromMonthly(
+      prevYearMonthlyData,
+      prevYearRetailData,
+      prevYearShipmentData,
+      prevYearPurchaseData ?? undefined,
+      2025,
+    );
+  }, [year, brand, prevYearMonthlyData, prevYearRetailData, prevYearShipmentData, prevYearPurchaseData, prevYearMonthlyDataByBrand, prevYearRetailDataByBrand, prevYearShipmentDataByBrand]);
+
+  // 2026 대리상 리테일 연간합계 = 2025 Sell-out × 성장률
+  const retailDealerAnnualTotalByRowKey = useMemo<Record<string, number | null> | null>(() => {
+    if (year !== 2026 || !prevYearTopTableData) return null;
+    const factor = 1 + growthRate / 100;
+    const result: Record<string, number | null> = {};
+    for (const row of prevYearTopTableData.dealer.rows) {
+      const retailKey = row.key === '재고자산합계' ? '매출합계' : row.key;
+      result[retailKey] = Math.round(row.sellOutTotal * factor) * 1000;
+    }
+    // MLB 브랜드만 1년차 연간합계 별도 목표값 적용
+    if (brand === 'MLB') {
+      result['1년차'] = MLB_1YEAR_OVERRIDE_K * 1000;
+    }
+    return result;
+  }, [year, brand, prevYearTopTableData, growthRate]);
+
+  // 검증: 1~12월 합계 - 연간합계 (2026 대리상 리테일)
+  // 대리상: 실적월 고정, 계획월만 비중 배분하여 목표 연간합계에 맞춤
+  // planSum=0(계획월 전부 0)이면 remaining을 계획월 수로 균등 배분
+  const adjustedDealerRetailData = useMemo<TableData | null>(() => {
+    if (year !== 2026 || !effectiveRetailData || !retailDealerAnnualTotalByRowKey) return null;
+    const planFrom = effectiveRetailData.planFromMonth ?? 13;
+    const planMonthCount = 12 - (planFrom - 1);
+    const rows = effectiveRetailData.dealer.rows.map((row) => {
+      const annualTarget = retailDealerAnnualTotalByRowKey[row.key] ?? null;
+      if (annualTarget == null) return { ...row };
+      const monthly = [...row.monthly];
+      const actualSum = monthly.slice(0, planFrom - 1).reduce<number>((s, v) => s + (v ?? 0), 0);
+      const remaining = annualTarget - actualSum;
+      const planSum = monthly.slice(planFrom - 1).reduce<number>((s, v) => s + (v ?? 0), 0);
+      for (let m = planFrom - 1; m < 12; m++) {
+        if (planSum > 0) {
+          const v = monthly[m] ?? 0;
+          monthly[m] = Math.round(remaining * (v / planSum));
+        } else {
+          // 계획월 데이터 없으면 균등 배분
+          monthly[m] = planMonthCount > 0 ? Math.round(remaining / planMonthCount) : 0;
+        }
+      }
+      return { ...row, monthly };
+    });
+    return { rows: rows as TableData['rows'] };
+  }, [year, effectiveRetailData, retailDealerAnnualTotalByRowKey]);
+
+  const retailDealerValidationByRowKey = useMemo<Record<string, number | null> | null>(() => {
+    if (year !== 2026 || !adjustedDealerRetailData || !retailDealerAnnualTotalByRowKey) return null;
+    const result: Record<string, number | null> = {};
+    for (const row of adjustedDealerRetailData.rows) {
+      const monthlySum = row.monthly.reduce<number | null>(
+        (s, v) => (v == null ? s : (s ?? 0) + v),
+        null,
+      );
+      const annualTotal = retailDealerAnnualTotalByRowKey[row.key] ?? null;
+      result[row.key] =
+        monthlySum != null && annualTotal != null ? monthlySum - annualTotal : null;
+    }
+    return result;
+  }, [year, adjustedDealerRetailData, retailDealerAnnualTotalByRowKey]);
+
+  // 2026 본사 리테일 연간합계 = 2025 본사 Sell-out × 본사 성장률
+  const retailHqAnnualTotalByRowKey = useMemo<Record<string, number | null> | null>(() => {
+    if (year !== 2026 || !prevYearTopTableData) return null;
+    const factor = 1 + growthRateHq / 100;
+    const result: Record<string, number | null> = {};
+    for (const row of prevYearTopTableData.hq.rows) {
+      const retailKey = row.key === '재고자산합계' ? '매출합계' : row.key;
+      result[retailKey] = Math.round((row.hqSalesTotal ?? 0) * factor) * 1000;
+    }
+    return result;
+  }, [year, prevYearTopTableData, growthRateHq]);
+
+  // 검증: 1~12월 합계 - 연간합계 (2026 본사 리테일)
+  // 본사: 실적월 고정, 계획월만 비중 배분하여 목표 연간합계에 맞춤
+  // planSum=0(계획월 전부 0)이면 remaining을 계획월 수로 균등 배분
+  const adjustedHqRetailData = useMemo<TableData | null>(() => {
+    if (year !== 2026 || !effectiveRetailData || !retailHqAnnualTotalByRowKey) return null;
+    const planFrom = effectiveRetailData.planFromMonth ?? 13;
+    const planMonthCount = 12 - (planFrom - 1);
+    const rows = effectiveRetailData.hq.rows.map((row) => {
+      const annualTarget = retailHqAnnualTotalByRowKey[row.key] ?? null;
+      if (annualTarget == null) return { ...row };
+      const monthly = [...row.monthly];
+      const actualSum = monthly.slice(0, planFrom - 1).reduce<number>((s, v) => s + (v ?? 0), 0);
+      const remaining = annualTarget - actualSum;
+      const planSum = monthly.slice(planFrom - 1).reduce<number>((s, v) => s + (v ?? 0), 0);
+      for (let m = planFrom - 1; m < 12; m++) {
+        if (planSum > 0) {
+          const v = monthly[m] ?? 0;
+          monthly[m] = Math.round(remaining * (v / planSum));
+        } else {
+          monthly[m] = planMonthCount > 0 ? Math.round(remaining / planMonthCount) : 0;
+        }
+      }
+      return { ...row, monthly };
+    });
+    return { rows: rows as TableData['rows'] };
+  }, [year, effectiveRetailData, retailHqAnnualTotalByRowKey]);
+
+  const retailHqValidationByRowKey = useMemo<Record<string, number | null> | null>(() => {
+    if (year !== 2026 || !adjustedHqRetailData || !retailHqAnnualTotalByRowKey) return null;
+    const result: Record<string, number | null> = {};
+    for (const row of adjustedHqRetailData.rows) {
+      const monthlySum = row.monthly.reduce<number | null>(
+        (s, v) => (v == null ? s : (s ?? 0) + v),
+        null,
+      );
+      const annualTotal = retailHqAnnualTotalByRowKey[row.key] ?? null;
+      result[row.key] =
+        monthlySum != null && annualTotal != null ? monthlySum - annualTotal : null;
+    }
+    return result;
+  }, [year, adjustedHqRetailData, retailHqAnnualTotalByRowKey]);
+
+  // 2026년 상단 재고자산표 display용: 대리상 Sell-out → 대리상 리테일 연간합계, 본사 본사판매 → 본사 리테일 연간합계
+  const topTableDisplayData = useMemo<{ dealer: InventoryTableData; hq: InventoryTableData } | null>(() => {
+    if (year !== 2026 || !topTableData) return null;
+
+    const inventoryKeyToRetailKey = (key: string) =>
+      key === '재고자산합계' ? '매출합계' : key;
+
+    const scaleMonthly = (monthly: number[], oldTotal: number, newTotal: number): number[] => {
+      if (oldTotal === 0) return monthly.map(() => Math.round(newTotal / 12));
+      return monthly.map((v) => Math.round(v * (newTotal / oldTotal)));
+    };
+
+    // 대리상: sellOut / sellOutTotal 교체
+    const dealerRows = topTableData.dealer.rows.map((row) => {
+      const retailKey = inventoryKeyToRetailKey(row.key);
+      const newTotalWon = retailDealerAnnualTotalByRowKey?.[retailKey] ?? null;
+      if (newTotalWon == null) return row;
+      const newTotalK = newTotalWon / 1000;
+      return {
+        ...row,
+        sellOut: scaleMonthly(row.sellOut, row.sellOutTotal, newTotalK),
+        sellOutTotal: newTotalK,
+      };
+    });
+
+    // 본사: hqSales / hqSalesTotal 교체 (sellOut/대리상출고는 유지)
+    const hqRows = topTableData.hq.rows.map((row) => {
+      const retailKey = inventoryKeyToRetailKey(row.key);
+      const newTotalWon = retailHqAnnualTotalByRowKey?.[retailKey] ?? null;
+      if (newTotalWon == null) return row;
+      const newTotalK = newTotalWon / 1000;
+      const oldHqTotal = row.hqSalesTotal ?? 0;
+      const newHqSales = row.hqSales
+        ? scaleMonthly(row.hqSales, oldHqTotal, newTotalK)
+        : undefined;
+      return {
+        ...row,
+        hqSales: newHqSales,
+        hqSalesTotal: newTotalK,
+      };
+    });
+
+    return {
+      dealer: { ...topTableData.dealer, rows: dealerRows as InventoryTableData['rows'] },
+      hq: { ...topTableData.hq, rows: hqRows as InventoryTableData['rows'] },
+    };
+  }, [year, topTableData, retailDealerAnnualTotalByRowKey, retailHqAnnualTotalByRowKey]);
 
   const shouldUseTopTableOnly = year === 2025 || year === 2026;
   const dealerTableData = shouldUseTopTableOnly
@@ -2353,7 +2573,7 @@ export default function InventoryDashboard() {
                     title="대리상 리테일 계획매출 전년 대비 성장률"
                   />
                 }
-                data={dealerTableData!}
+                data={(year === 2026 ? topTableDisplayData?.dealer : null) ?? dealerTableData!}
                 year={year}
                 sellInLabel="Sell-in"
                 sellOutLabel="Sell-out"
@@ -2383,7 +2603,7 @@ export default function InventoryDashboard() {
                     />
                   </>
                 }
-                data={hqTableData!}
+                data={(year === 2026 ? topTableDisplayData?.hq : null) ?? hqTableData!}
                 year={year}
                 sellInLabel="상품매입"
                 sellOutLabel="대리상출고"
@@ -2679,6 +2899,9 @@ export default function InventoryDashboard() {
                       </table>
                     )}
                   </div>
+                  <p className="mt-1 text-[10px] text-gray-400">
+                    ※ MLB: 별도 목표 적용 / MLB KIDS·DISCOVERY: Snowflake 실적
+                  </p>
                 </div>
 
               </div>
@@ -2739,7 +2962,7 @@ export default function InventoryDashboard() {
           </div>
         )}
 
-        {/* 월별 재고잔액 */}
+        {/* 대리상 리테일매출(보정) */}
         {year === 2025 && adjustedDealerRetailTable && (
           <div className="mt-10 border-t border-gray-300 pt-8">
             <button
@@ -2758,16 +2981,21 @@ export default function InventoryDashboard() {
             </button>
             {adjustedRetailOpen && (
               <div className="mt-3">
-              <InventoryMonthlyTable
-                firstColumnHeader="대리상 리테일매출(보정)"
-                data={adjustedDealerRetailTable}
-                year={year}
-                showOpening={true}
-              />
+                <InventoryMonthlyTable
+                  firstColumnHeader="대리상 리테일매출(보정)"
+                  data={adjustedDealerRetailTable}
+                  year={year}
+                  showOpening={false}
+                  annualTotalByRowKey={adjustedRetailAnnualTotalByRowKey ?? undefined}
+                  validationHeader="검증(월합-연간)"
+                  validationByRowKey={adjustedRetailValidationByRowKey ?? undefined}
+                />
               </div>
             )}
           </div>
         )}
+
+        {/* 월별 재고잔액 */}
 
         <div className="mt-10 border-t border-gray-300 pt-8">
           <button
@@ -2780,7 +3008,7 @@ export default function InventoryDashboard() {
             </SectionIcon>
             <span className="text-sm font-bold text-gray-700">월별 재고잔액</span>
             <span className="text-xs font-normal text-gray-400">
-              (단위: CNY K / 실적 기준: ~{monthlyData?.closedThrough ?? '--'})
+              {year === 2025 ? '(단위: CNY K / 실적: 1~12월)' : `(단위: CNY K / 실적 기준: ~${monthlyData?.closedThrough ?? '--'})`}
             </span>
             {monthlyPlanSummaryText && (
               <span className="text-xs font-normal text-red-600">
@@ -2853,7 +3081,7 @@ export default function InventoryDashboard() {
             </SectionIcon>
             <span className="text-sm font-bold text-gray-700">리테일 매출</span>
             <span className="text-xs font-normal text-gray-400">
-              (단위: CNY K / 실적 기준: ~{retailData?.closedThrough ?? '--'})
+              {year === 2025 ? '(단위: CNY K / 실적: 1~12월)' : year === 2026 ? '(단위: CNY K / 실적: 1~2월, 3~12월 성장률 보정)' : `(단위: CNY K / 실적 기준: ~${retailData?.closedThrough ?? '--'})`}
             </span>
             <span className="ml-auto text-gray-400 text-xs shrink-0">
               {retailOpen ? '접기' : '펼치기'}
@@ -2862,6 +3090,11 @@ export default function InventoryDashboard() {
           {year === 2026 && (
             <div className="mt-1 pl-7 text-xs text-red-600">
               대리상: 실적월까지 당해 실적, 이후는 전년(2025 보정 대리상 리테일) x 성장률 / 직영: 실적월까지 당해 실적, 이후는 전년 본사 리테일 x 본사 성장률
+            </div>
+          )}
+          {year === 2026 && brand === 'MLB' && (
+            <div className="mt-1 pl-7 text-xs text-amber-700 font-medium">
+              ※ 대리상 1년차 연간합계: MLB 별도 목표 적용 ({MLB_1YEAR_OVERRIDE_K.toLocaleString()}K)
             </div>
           )}
           {retailError && !retailOpen && (
@@ -2881,17 +3114,23 @@ export default function InventoryDashboard() {
                 <>
                   <InventoryMonthlyTable
                     firstColumnHeader="대리상"
-                    data={effectiveRetailData.dealer as TableData}
+                    data={year === 2026 && adjustedDealerRetailData ? adjustedDealerRetailData : (effectiveRetailData.dealer as TableData)}
                     year={year}
                     showOpening={false}
                     planFromMonth={effectiveRetailData.planFromMonth}
+                    annualTotalByRowKey={year === 2026 ? (retailDealerAnnualTotalByRowKey ?? undefined) : undefined}
+                    validationHeader={year === 2026 ? '검증(월합-연간)' : undefined}
+                    validationByRowKey={year === 2026 ? (retailDealerValidationByRowKey ?? undefined) : undefined}
                   />
                   <InventoryMonthlyTable
                     firstColumnHeader="본사"
-                    data={effectiveRetailData.hq as TableData}
+                    data={year === 2026 && adjustedHqRetailData ? adjustedHqRetailData : (effectiveRetailData.hq as TableData)}
                     year={year}
                     showOpening={false}
                     planFromMonth={effectiveRetailData.planFromMonth}
+                    annualTotalByRowKey={year === 2026 ? (retailHqAnnualTotalByRowKey ?? undefined) : undefined}
+                    validationHeader={year === 2026 ? '검증(월합-연간)' : undefined}
+                    validationByRowKey={year === 2026 ? (retailHqValidationByRowKey ?? undefined) : undefined}
                     headerBg="#4db6ac"
                     headerBorderColor="#2a9d8f"
                     totalRowCls="bg-teal-50"
@@ -2919,7 +3158,7 @@ export default function InventoryDashboard() {
             </SectionIcon>
             <span className="text-sm font-bold text-gray-700">본사→대리상 출고매출</span>
             <span className="text-xs font-normal text-gray-400">
-              (단위: CNY K / 실적 기준: ~{shipmentData?.closedThrough ?? '--'})
+              {year === 2025 ? '(단위: CNY K / 실적: 1~12월)' : `(단위: CNY K / 실적 기준: ~${shipmentData?.closedThrough ?? '--'})`}
             </span>
             <span className="ml-auto text-gray-400 text-xs shrink-0">
               {shipmentOpen ? '접기' : '펼치기'}
@@ -2978,7 +3217,7 @@ export default function InventoryDashboard() {
             </SectionIcon>
             <span className="text-sm font-bold text-gray-700">본사 매입상품</span>
             <span className="text-xs font-normal text-gray-400">
-              (단위: CNY K / 실적 기준: ~{purchaseData?.closedThrough ?? '--'})
+              {year === 2025 ? '(단위: CNY K / 실적: 1~12월)' : `(단위: CNY K / 실적 기준: ~${purchaseData?.closedThrough ?? '--'})`}
             </span>
             <span className="ml-auto text-gray-400 text-xs shrink-0">
               {purchaseOpen ? '접기' : '펼치기'}

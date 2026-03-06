@@ -81,15 +81,23 @@ export function buildTableDataFromMonthly(
     const openingDealer = toK(mDealer?.opening);
     const closingDealer = toK(mDealer?.monthly?.[11] ?? null);
     const sellInDealer = ship ? to12ValuesK(ship.monthly) : new Array(12).fill(0);
-    const sellOutDealer = rDealer ? to12ValuesK(rDealer.monthly) : new Array(12).fill(0);
+
+    // Sell-out = 기초 + Sell-in - 기말 (월별 계산)
+    const dealerMonthlyK = mDealer
+      ? to12Values(mDealer.monthly).map((v) => v / 1000)
+      : new Array(12).fill(0);
+    const sellOutDealer = sellInDealer.map((si, m) => {
+      const prevClose = m === 0 ? openingDealer : dealerMonthlyK[m - 1];
+      const thisClose = dealerMonthlyK[m];
+      return prevClose + si - thisClose;
+    });
 
     dealerRaw.push({
       key,
       opening: openingDealer,
       sellIn: sellInDealer,
-      sellOut: sellOutDealer,
+      sellOut: sellOutDealer,  // = 기초 + Sell-in - 기말
       closing: closingDealer,
-      // 대리상 WOI 기준 = sellOut(리테일매출 대리상)과 동일 → woiSellOut 미설정
     });
 
     const openingHq = toK(mHq?.opening);

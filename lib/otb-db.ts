@@ -87,6 +87,7 @@ export async function fetchOtbData(): Promise<OtbData> {
   for (const brand of OTB_BRANDS) {
     if (brand === 'MLB') continue; // 하드코딩으로 처리
     for (const season of OTB_SEASONS) {
+      if (season === '25F') continue; // MLB KIDS, DISCOVERY의 25F는 조회 제외 (0으로 유지)
       tasks.push({
         brand,
         season,

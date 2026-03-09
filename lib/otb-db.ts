@@ -75,6 +75,15 @@ const MLB_OTB_HARDCODE: Record<OtbSeason, number> = {
   '25F': 200_000_000,
 };
 
+/** DISCOVERY OTB 하드코딩 값 (CNY 단위, API 호출 없이 고정) */
+const DISCOVERY_OTB_HARDCODE: Record<OtbSeason, number> = {
+  '27F': 0,
+  '27S': 4_989_226,
+  '26F': 135_258_137,
+  '26S': 76_186_913,
+  '25F': 0,
+};
+
 /**
  * 2026년 기준 5개 시즌 × 3개 브랜드 OTB 합계(retail_amt)를 병렬 조회.
  * MLB 브랜드는 하드코딩 값 사용, MLB KIDS / DISCOVERY는 Snowflake 조회.
@@ -85,9 +94,9 @@ export async function fetchOtbData(): Promise<OtbData> {
 
   const tasks: Task[] = [];
   for (const brand of OTB_BRANDS) {
-    if (brand === 'MLB') continue; // 하드코딩으로 처리
+    if (brand === 'MLB' || brand === 'DISCOVERY') continue; // 하드코딩으로 처리
     for (const season of OTB_SEASONS) {
-      if (season === '25F') continue; // MLB KIDS, DISCOVERY의 25F는 조회 제외 (0으로 유지)
+      if (season === '25F') continue; // MLB KIDS의 25F는 조회 제외 (0으로 유지)
       tasks.push({
         brand,
         season,
@@ -116,9 +125,10 @@ export async function fetchOtbData(): Promise<OtbData> {
     data[season][brand] = value ?? 0;
   }
 
-  // MLB는 하드코딩 값으로 덮어쓰기
+  // MLB, DISCOVERY는 하드코딩 값으로 덮어쓰기
   for (const season of OTB_SEASONS) {
     data[season]['MLB'] = MLB_OTB_HARDCODE[season];
+    data[season]['DISCOVERY'] = DISCOVERY_OTB_HARDCODE[season];
   }
 
   return data;

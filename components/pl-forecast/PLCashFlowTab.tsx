@@ -488,6 +488,17 @@ export default function PLCashFlowTab() {
   });
   const [shipmentLoaded, setShipmentLoaded] = useState(false);
 
+  const [cfPlanByKey, setCfPlanByKey] = useState<Record<string, number>>({});
+
+  useEffect(() => {
+    fetch('/api/pl-forecast/cf-plan', { cache: 'no-store' })
+      .then((res) => res.json())
+      .then((data: Record<string, number>) => {
+        if (data && !data.error) setCfPlanByKey(data);
+      })
+      .catch(() => {});
+  }, []);
+
   useEffect(() => {
     if (typeof window === 'undefined') return;
 
@@ -823,6 +834,32 @@ export default function PLCashFlowTab() {
     return Number.isFinite(raw) ? raw : null;
   };
 
+  const cfPlan = (rowKey: string): number | null => {
+    const v = cfPlanByKey[rowKey];
+    return typeof v === 'number' && Number.isFinite(v) ? v : null;
+  };
+
+  const cfPlanVsPrev = (row: StaticCFRow): number | null => {
+    const plan = cfPlan(row.key);
+    if (plan == null || row.actual2025 == null) return null;
+    return plan - row.actual2025;
+  };
+
+  const cfPlanVsRollingAmount = (rowKey: string): number | null => {
+    const rolling = cf2026(rowKey);
+    const plan = cfPlan(rowKey);
+    if (rolling == null || plan == null) return null;
+    return rolling - plan;
+  };
+
+  const cfPlanVsRollingPct = (rowKey: string): string => {
+    const rolling = cf2026(rowKey);
+    const plan = cfPlan(rowKey);
+    if (rolling == null || plan == null || plan === 0) return '-';
+    const pct = ((rolling - plan) / Math.abs(plan)) * 100;
+    return `${pct >= 0 ? '+' : ''}${pct.toFixed(1)}%`;
+  };
+
   const cashBorrowingSeries = (rowKey: 'cash' | 'borrowing') =>
     rowKey === 'cash'
       ? { current: cashBorrowingData.cash, previous: cashBorrowingData.prevCash }
@@ -1039,7 +1076,7 @@ export default function PLCashFlowTab() {
       </div>
 
         <div className="flex flex-1 min-h-0">
-          <div className={`${monthsCollapsed ? 'w-1/3' : 'flex-1'} min-w-0 overflow-auto p-6`}>
+          <div className={`${monthsCollapsed ? 'w-1/2' : 'flex-1'} min-w-0 overflow-auto p-6`}>
           <div className="flex items-center gap-2 mb-3">
             <h2 className="text-lg font-bold text-gray-900">현금흐름표</h2>
             <button
@@ -1059,6 +1096,8 @@ export default function PLCashFlowTab() {
                     계정과목
                   </th>
                   <th className="border border-gray-300 py-3 px-4 text-center min-w-[120px]">2025년(합계)</th>
+                  <th className="border border-gray-300 py-3 px-4 text-center min-w-[120px]">2026년(계획)</th>
+                  <th className="border border-gray-300 py-3 px-4 text-center min-w-[100px]">전년vs계획</th>
                   {!monthsCollapsed && PL_CF_MONTH_LABELS.map((month) => (
                     <th key={`cf-header-${month}`} className="border border-gray-300 py-3 px-4 text-center min-w-[84px]">
                       {month}
@@ -1066,6 +1105,8 @@ export default function PLCashFlowTab() {
                   ))}
                   <th className="border border-gray-300 py-3 px-4 text-center min-w-[120px]">2026년(합계)</th>
                   <th className="border border-gray-300 py-3 px-4 text-center min-w-[100px]">YoY</th>
+                  <th className="border border-gray-300 py-3 px-4 text-center min-w-[120px]">계획대비증감(금액)</th>
+                  <th className="border border-gray-300 py-3 px-4 text-center min-w-[100px]">계획대비 증감(%)</th>
                 </tr>
               </thead>
               <tbody>
@@ -1110,6 +1151,8 @@ export default function PLCashFlowTab() {
                         )}
                       </td>
                       <td className="border border-gray-300 py-2 px-4 text-right">{formatActual(row.actual2025)}</td>
+                      <td className="border border-gray-300 py-2 px-4 text-right">{cfPlan(row.key) != null ? formatActual(cfPlan(row.key)) : '-'}</td>
+                      <td className="border border-gray-300 py-2 px-4 text-right">{cfPlanVsPrev(row) != null ? formatActual(cfPlanVsPrev(row)) : '-'}</td>
                       {!monthsCollapsed && PL_CF_MONTH_LABELS.map((month, monthIndex) => {
                         const monthValue = cfMonthly(row.key, monthIndex);
                         return (
@@ -1123,6 +1166,8 @@ export default function PLCashFlowTab() {
                       })}
                       <td className="border border-gray-300 py-2 px-4 text-right">{formatActual(cf2026(row.key))}</td>
                       <td className="border border-gray-300 py-2 px-4 text-right">{formatActual(cfYoy(row))}</td>
+                      <td className="border border-gray-300 py-2 px-4 text-right">{cfPlanVsRollingAmount(row.key) != null ? formatActual(cfPlanVsRollingAmount(row.key)) : '-'}</td>
+                      <td className="border border-gray-300 py-2 px-4 text-right">{cfPlanVsRollingPct(row.key)}</td>
                     </tr>
                   );
                 })}
@@ -1138,6 +1183,8 @@ export default function PLCashFlowTab() {
                   <tr>
                     <th className="border border-gray-300 py-2.5 px-4 text-left sticky left-0 z-10 bg-navy min-w-[200px]">구분</th>
                     <th className="border border-gray-300 py-2.5 px-4 text-center min-w-[120px]">기초잔액</th>
+                    <th className="border border-gray-300 py-2.5 px-4 text-center min-w-[120px]">2026년(계획)</th>
+                    <th className="border border-gray-300 py-2.5 px-4 text-center min-w-[100px]">전년vs계획</th>
                     {!monthsCollapsed && PL_CF_MONTH_LABELS.map((month) => (
                       <th key={`balance-header-${month}`} className="border border-gray-300 py-2.5 px-4 text-center min-w-[84px]">
                         {month}
@@ -1145,12 +1192,16 @@ export default function PLCashFlowTab() {
                     ))}
                     <th className="border border-gray-300 py-2.5 px-4 text-center min-w-[120px]">기말잔액</th>
                     <th className="border border-gray-300 py-2.5 px-4 text-center min-w-[100px]">YoY</th>
+                    <th className="border border-gray-300 py-2.5 px-4 text-center min-w-[120px]">계획대비증감(금액)</th>
+                    <th className="border border-gray-300 py-2.5 px-4 text-center min-w-[100px]">계획대비 증감(%)</th>
                   </tr>
                 </thead>
                 <tbody className="bg-gray-50">
                   <tr>
                     <td className="border border-gray-300 py-2 px-4 font-medium sticky left-0 z-10 bg-gray-100 text-gray-800">현금잔액</td>
                     <td className="border border-gray-300 py-2 px-4 text-right bg-gray-50">{formatActual(cashBorrowingOpening('cash'))}</td>
+                    <td className="border border-gray-300 py-2 px-4 text-right bg-gray-50 text-gray-300">-</td>
+                    <td className="border border-gray-300 py-2 px-4 text-right bg-gray-50 text-gray-300">-</td>
                     {!monthsCollapsed && PL_CF_MONTH_LABELS.map((month, monthIndex) => {
                       const monthValue = cashBorrowingMonthly('cash', monthIndex);
                       return (
@@ -1161,10 +1212,14 @@ export default function PLCashFlowTab() {
                     })}
                     <td className="border border-gray-300 py-2 px-4 text-right bg-gray-50">{formatActual(cashBorrowing2026('cash'))}</td>
                     <td className="border border-gray-300 py-2 px-4 text-right bg-gray-50">{formatActual(cashBorrowingYoy('cash'))}</td>
+                    <td className="border border-gray-300 py-2 px-4 text-right bg-gray-50 text-gray-300">-</td>
+                    <td className="border border-gray-300 py-2 px-4 text-right bg-gray-50 text-gray-300">-</td>
                   </tr>
                   <tr>
                     <td className="border border-gray-300 py-2 px-4 font-medium sticky left-0 z-10 bg-gray-100 text-gray-800">차입금잔액</td>
                     <td className="border border-gray-300 py-2 px-4 text-right bg-gray-50">{formatActual(cashBorrowingOpening('borrowing'))}</td>
+                    <td className="border border-gray-300 py-2 px-4 text-right bg-gray-50 text-gray-300">-</td>
+                    <td className="border border-gray-300 py-2 px-4 text-right bg-gray-50 text-gray-300">-</td>
                     {!monthsCollapsed && PL_CF_MONTH_LABELS.map((month, monthIndex) => {
                       const monthValue = cashBorrowingMonthly('borrowing', monthIndex);
                       return (
@@ -1178,6 +1233,8 @@ export default function PLCashFlowTab() {
                     })}
                     <td className="border border-gray-300 py-2 px-4 text-right bg-gray-50">{formatActual(cashBorrowing2026('borrowing'))}</td>
                     <td className="border border-gray-300 py-2 px-4 text-right bg-gray-50">{formatActual(cashBorrowingYoy('borrowing'))}</td>
+                    <td className="border border-gray-300 py-2 px-4 text-right bg-gray-50 text-gray-300">-</td>
+                    <td className="border border-gray-300 py-2 px-4 text-right bg-gray-50 text-gray-300">-</td>
                   </tr>
                 </tbody>
               </table>
@@ -1201,6 +1258,8 @@ export default function PLCashFlowTab() {
                   <tr>
                     <th className="border border-gray-300 py-3 px-4 text-left sticky left-0 z-20 bg-navy min-w-[200px]">계정과목</th>
                     <th className="border border-gray-300 py-3 px-4 text-center min-w-[120px]">2025년(기말)</th>
+                    <th className="border border-gray-300 py-3 px-4 text-center min-w-[120px]">2026년(계획)</th>
+                    <th className="border border-gray-300 py-3 px-4 text-center min-w-[100px]">전년vs계획</th>
                     {!monthsCollapsed && PL_CF_MONTH_LABELS.map((month, monthIndex) => (
                       <th key={`wc-header-${month}`} className="border border-gray-300 py-3 px-4 text-center min-w-[84px]">
                         {formatWorkingCapitalMonthHeader(month, monthIndex)}
@@ -1208,6 +1267,8 @@ export default function PLCashFlowTab() {
                     ))}
                     <th className="border border-gray-300 py-3 px-4 text-center min-w-[120px]">2026년(기말)</th>
                     <th className="border border-gray-300 py-3 px-4 text-center min-w-[100px]">YoY</th>
+                    <th className="border border-gray-300 py-3 px-4 text-center min-w-[120px]">계획대비증감(금액)</th>
+                    <th className="border border-gray-300 py-3 px-4 text-center min-w-[100px]">계획대비 증감(%)</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -1240,6 +1301,8 @@ export default function PLCashFlowTab() {
                           )}
                         </td>
                         <td className={`border border-gray-300 py-2 px-4 text-right ${cellBg}`}>{formatActual(row.actual2025)}</td>
+                        <td className={`border border-gray-300 py-2 px-4 text-right text-gray-300 ${cellBg}`}>-</td>
+                        <td className={`border border-gray-300 py-2 px-4 text-right text-gray-300 ${cellBg}`}>-</td>
                         {!monthsCollapsed && PL_CF_MONTH_LABELS.map((month, monthIndex) => {
                           const monthValue = workingCapitalMonthly(row.key, monthIndex);
                           return (
@@ -1250,6 +1313,8 @@ export default function PLCashFlowTab() {
                         })}
                         <td className={`border border-gray-300 py-2 px-4 text-right ${cellBg}`}>{formatKValue(workingCapital2026(row.key))}</td>
                         <td className={`border border-gray-300 py-2 px-4 text-right ${cellBg}`}>{formatKValue(workingCapitalYoy(row))}</td>
+                        <td className={`border border-gray-300 py-2 px-4 text-right text-gray-300 ${cellBg}`}>-</td>
+                        <td className={`border border-gray-300 py-2 px-4 text-right text-gray-300 ${cellBg}`}>-</td>
                       </tr>
                     );
                   })}
@@ -1503,7 +1568,7 @@ export default function PLCashFlowTab() {
         </div>
 
           {monthsCollapsed && (
-            <div className="flex-1 min-w-0 overflow-auto p-6 border-l border-gray-200">
+            <div className="w-1/2 min-w-0 overflow-auto p-6 border-l border-gray-200">
               <CFExplanationPanel year={2026} />
             </div>
           )}

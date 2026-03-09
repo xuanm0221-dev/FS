@@ -1,4 +1,4 @@
-﻿'use client';
+'use client';
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 
@@ -25,7 +25,7 @@ export default function Tabs({ tabs, activeTab, onChange, groups }: TabsProps) {
     []
   );
   const tabGroups = groups && groups.length > 0 ? groups : defaultGroups;
-  const [hiddenGroups, setHiddenGroups] = useState<Record<string, boolean>>({});
+  const [hiddenGroups, setHiddenGroups] = useState<Record<string, boolean>>({ group1: true });
   const [saved, setSaved] = useState(false);
   const hasLoadedPreferenceRef = useRef(false);
 

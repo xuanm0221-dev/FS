@@ -73,7 +73,6 @@ interface Props {
   onSave: () => void;
   onRecalc: (mode: 'current' | 'annual') => void;
   allBrandsBgLoaded?: boolean;
-  onRefetch2025?: () => void;
 }
 
 export default function InventoryFilterBar({
@@ -88,22 +87,9 @@ export default function InventoryFilterBar({
   onSave,
   onRecalc,
   allBrandsBgLoaded = false,
-  onRefetch2025,
 }: Props) {
   const [dropdownOpen, setDropdownOpen] = useState(false);
-  const [refetching, setRefetching] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
-
-  async function handleRefetch2025() {
-    if (!onRefetch2025 || refetching) return;
-    setRefetching(true);
-    try {
-      await fetch('/api/inventory/cache-clear', { method: 'POST' });
-      onRefetch2025();
-    } finally {
-      setRefetching(false);
-    }
-  }
 
   // 드롭다운 외부 클릭 시 닫기
   useEffect(() => {
@@ -138,33 +124,6 @@ export default function InventoryFilterBar({
         </div>
 
         <div className="h-4 w-px bg-gray-300 flex-shrink-0" />
-
-        {/* 2025년 재조회 버튼 — 캐시 초기화 후 Snowflake 재조회 */}
-        {year === 2025 && onRefetch2025 && (
-          <button
-            type="button"
-            onClick={handleRefetch2025}
-            disabled={refetching || statusLoading}
-            className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded border transition-colors ${
-              refetching || statusLoading
-                ? 'bg-gray-100 text-gray-400 border-gray-200 cursor-not-allowed'
-                : 'bg-white text-gray-700 border-gray-300 hover:bg-orange-50 hover:border-orange-400 hover:text-orange-700'
-            }`}
-            title="캐시를 초기화하고 Snowflake에서 2025년 데이터를 다시 조회합니다"
-          >
-            {refetching ? (
-              <svg className="animate-spin" width="12" height="12" viewBox="0 0 12 12" fill="none">
-                <circle cx="6" cy="6" r="5" stroke="currentColor" strokeWidth="2" strokeDasharray="8 8" />
-              </svg>
-            ) : (
-              <svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor">
-                <path d="M10.5 6A4.5 4.5 0 1 1 6 1.5" stroke="currentColor" strokeWidth="1.5" fill="none" strokeLinecap="round"/>
-                <path d="M6 1.5L8.5 4H3.5z" />
-              </svg>
-            )}
-            2025 재조회
-          </button>
-        )}
 
         {/* 재고,리테일,출고,입고 저장 / 저장완료+재계산 — 2025년은 확정 실적이므로 미표시 */}
         {year !== 2025 && (

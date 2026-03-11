@@ -530,7 +530,6 @@ async function saveAnnualPlanToServer(year: number, data: AnnualShipmentPlan): P
 export default function InventoryDashboard() {
   const [year, setYear] = useState<number>(2026);
   const brand = '전체' as Brand;
-  const [refetch2025Counter, setRefetch2025Counter] = useState(0);
   const [growthRateByBrand, setGrowthRateByBrand] = useState<Record<AnnualPlanBrand, number>>({
     MLB: 5, 'MLB KIDS': 5, DISCOVERY: 5,
   });
@@ -1104,7 +1103,7 @@ export default function InventoryDashboard() {
       cancelled = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [year, brand, refetch2025Counter]); // growthRate???섎룄?곸쑝濡??쒖쇅
+  }, [year, brand]); // growthRate 관계없이 조회
 
   useEffect(() => {
     if (year !== 2026) return;
@@ -3568,7 +3567,6 @@ export default function InventoryDashboard() {
         onRecalc={handleRecalc}
         canSave={!!(monthlyData && retailData && shipmentData && purchaseData)}
         allBrandsBgLoaded={year === 2026 && allBrandsBgLoaded}
-        onRefetch2025={() => setRefetch2025Counter((c) => c + 1)}
       />
 
       <div className="px-6 py-5">
@@ -4225,7 +4223,7 @@ export default function InventoryDashboard() {
                       data={hqData}
                       year={year}
                       showOpening={false}
-                      planFromMonth={brandRetail.planFromMonth}
+                      planFromMonth={year === 2025 ? undefined : brandRetail.planFromMonth}
                       annualTotalByRowKey={year === 2026 ? (perBrandRetailHqAnnualByKey[b] ?? undefined) : undefined}
                       validationHeader={year === 2026 ? '검증(월합-연간)' : undefined}
                       validationByRowKey={year === 2026 ? (perBrandRetailHqValidationByKey[b] ?? undefined) : undefined}

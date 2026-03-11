@@ -155,7 +155,7 @@ export default function FinancialTable({
         // 2026년: 접힌 뷰는 2025년기말|26년1월|26년기말|YoY(4컬럼), 펼침은 25년기말|1~12월|26년기말|YoY
         return [
           '2025년 기말',
-          `${currYear}년1월`,
+          `${currYear}년2월`,
           `${currYear}년6월`,
           `${currYear}년기말`,
           'YoY(연간)',
@@ -406,7 +406,7 @@ export default function FinancialTable({
                 
                 const isComparisonCol = showComparisons && comparisonColumns.includes(col);
                 const isBrandCol = showBrandBreakdown && brands.includes(col);
-                // 2026 재무상태표 접힌 뷰: 26년1월 열만 연한 버터색
+                // 2026 재무상태표 접힌 뷰: 26년2월 열만 연한 버터색
                 const isBS2026JanCol = isBalanceSheet && currentYear === 2026 && monthsCollapsed && col === comparisonColumns[1];
                 
                 // CF: 기준월 개념 없음 (모든 월 동일하게 표시)

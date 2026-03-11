@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Brand, InventoryApiResponse, InventoryTableData, InventoryRowRaw, AccKey, ACC_KEYS, SEASON_KEYS, RowKey } from '@/lib/inventory-types';
 import { MonthlyStockResponse } from '@/lib/inventory-monthly-types';
 import { RetailSalesResponse, RetailSalesRow } from '@/lib/retail-sales-types';
@@ -250,8 +250,8 @@ function buildAdjustedDealerRetailRows(
         const opening = monthIndex === 0 ? (monthlyRow.opening ?? null) : (monthlyRow.monthly[monthIndex - 1] ?? null);
         const sellIn = shipmentRow.monthly[monthIndex] ?? null;
         const closing = monthlyRow.monthly[monthIndex] ?? null;
-        if (opening === null || sellIn === null || closing === null) return null;
-        return opening + sellIn - closing;
+        if (opening === null && sellIn === null && closing === null) return null;
+        return (opening ?? 0) + (sellIn ?? 0) - (closing ?? 0);
       }),
     }));
 
@@ -531,10 +531,10 @@ export default function InventoryDashboard() {
   const [year, setYear] = useState<number>(2026);
   const brand = '전체' as Brand;
   const [growthRateByBrand, setGrowthRateByBrand] = useState<Record<AnnualPlanBrand, number>>({
-    MLB: 5, 'MLB KIDS': 5, DISCOVERY: 5,
+    MLB: 5, 'MLB KIDS': -1, DISCOVERY: 200,
   });
   const [growthRateHqByBrand, setGrowthRateHqByBrand] = useState<Record<AnnualPlanBrand, number>>({
-    MLB: 17, 'MLB KIDS': 17, DISCOVERY: 17,
+    MLB: 17, 'MLB KIDS': 0, DISCOVERY: 200,
   });
   const growthRate = growthRateByBrand['MLB'] ?? 5;
   const growthRateHq = growthRateHqByBrand['MLB'] ?? 17;
@@ -781,6 +781,12 @@ export default function InventoryDashboard() {
   const [annualPlanOpen, setAnnualPlanOpen] = useState(false);
   const [dependentPlanOpen, setDependentPlanOpen] = useState(false);
   const [dependentPlanValues, setDependentPlanValues] = useState<DependentPlanValueMap>({});
+  const [dependentDriverBrandOpen, setDependentDriverBrandOpen] = useState<Partial<Record<DependentPlanRowLabel, boolean>>>({});
+  const [inventoryBrandOpen, setInventoryBrandOpen] = useState<Record<AnnualPlanBrand, boolean>>({
+    MLB: true,
+    'MLB KIDS': true,
+    DISCOVERY: true,
+  });
   const [dependentPlanInitialLoading, setDependentPlanInitialLoading] = useState(false);
   const [otbData, setOtbData] = useState<OtbData | null>(null);
   const [otbLoading, setOtbLoading] = useState(false);
@@ -3582,26 +3588,26 @@ export default function InventoryDashboard() {
         {/* 2026: 리테일 성장율 | 재고관련 주요지표 (상단 이동) */}
         {year === 2026 && (
           <div className="mb-6" style={{ paddingLeft: '1.5%', paddingRight: '1.5%' }}>
-            <div className="grid gap-6 lg:grid-cols-[minmax(0,0.7fr)_minmax(0,1.3fr)]">
-              <div className="min-w-0 max-w-[560px]">
-                <div className="mb-3 border-l-4 border-sky-500 pl-3 text-sm font-bold text-slate-900">리테일 성장율</div>
-                <div className="overflow-x-auto rounded-xl border border-slate-200 shadow-inner">
+            <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
+              <div className="min-w-0 lg:col-span-1">
+                <div className="mb-3 rounded-lg border border-sky-200 bg-sky-50/70 px-3 py-2 text-sm font-semibold tracking-tight text-slate-900">리테일 성장율</div>
+                <div className="overflow-x-auto rounded-2xl border border-slate-200 bg-white shadow-[0_6px_18px_rgba(15,23,42,0.06)]">
                   <table className="min-w-full border-collapse text-xs">
                     <thead>
                       <tr>
-                        <th className="min-w-[100px] border border-slate-300 bg-slate-900 px-3 py-2.5 text-left text-[11px] font-semibold tracking-wide text-white">브랜드</th>
-                        <th className="min-w-[84px] border border-slate-300 bg-slate-900 px-3 py-2.5 text-center text-[11px] font-semibold tracking-wide text-white">대리상</th>
-                        <th className="min-w-[84px] border border-slate-300 bg-slate-900 px-3 py-2.5 text-center text-[11px] font-semibold tracking-wide text-white">본사</th>
+                        <th className="min-w-[100px] border border-[#2e3d5f] bg-[#1f2a44] px-3 py-2.5 text-left text-[11px] font-semibold tracking-wide text-white">브랜드</th>
+                        <th className="min-w-[84px] border border-[#2e3d5f] bg-[#1f2a44] px-3 py-2.5 text-center text-[11px] font-semibold tracking-wide text-white">대리상</th>
+                        <th className="min-w-[84px] border border-[#2e3d5f] bg-[#1f2a44] px-3 py-2.5 text-center text-[11px] font-semibold tracking-wide text-white">본사</th>
                       </tr>
                     </thead>
                     <tbody>
                       {ANNUAL_PLAN_BRANDS.map((b) => (
-                        <tr key={b} className="bg-white odd:bg-slate-50/80 hover:bg-sky-50">
+                        <tr key={b} className="bg-white odd:bg-slate-50/70 hover:bg-sky-50/60">
                           <td className="border-b border-slate-200 px-3 py-2.5 font-semibold text-slate-700">{b}</td>
                           <td className="border-b border-slate-200 px-1 py-1 text-center">
                             <input
                               type="number"
-                              className="w-[72px] rounded border border-slate-300 px-2 py-1 text-right text-sm font-semibold text-slate-950 focus:border-sky-500 focus:outline-none"
+                              className="w-[72px] rounded-md border border-slate-300 bg-white px-2 py-1 text-right text-sm font-semibold text-slate-950 shadow-sm focus:border-sky-500 focus:outline-none focus:ring-2 focus:ring-sky-100"
                               value={100 + growthRateByBrand[b]}
                               onChange={(e) => {
                                 const raw = Number(e.target.value);
@@ -3615,7 +3621,7 @@ export default function InventoryDashboard() {
                           <td className="border-b border-slate-200 px-1 py-1 text-center">
                             <input
                               type="number"
-                              className="w-[72px] rounded border border-slate-300 px-2 py-1 text-right text-sm font-semibold text-slate-950 focus:border-sky-500 focus:outline-none"
+                              className="w-[72px] rounded-md border border-slate-300 bg-white px-2 py-1 text-right text-sm font-semibold text-slate-950 shadow-sm focus:border-sky-500 focus:outline-none focus:ring-2 focus:ring-sky-100"
                               value={100 + growthRateHqByBrand[b]}
                               onChange={(e) => {
                                 const raw = Number(e.target.value);
@@ -3632,82 +3638,139 @@ export default function InventoryDashboard() {
                   </table>
                 </div>
               </div>
-              <div className="min-w-0">
-                <div className="mb-3 border-l-4 border-amber-500 pl-3 text-sm font-bold text-slate-900">재고관련 주요지표</div>
-                <div className="overflow-x-auto rounded-xl border border-slate-200 shadow-inner">
+              <div className="min-w-0 lg:col-span-2">
+                <div className="mb-3 rounded-lg border border-amber-200 bg-amber-50/70 px-3 py-2 text-sm font-semibold tracking-tight text-slate-900">재고관련 주요지표</div>
+                <div className="overflow-x-auto rounded-2xl border border-slate-200 bg-white shadow-[0_6px_18px_rgba(15,23,42,0.06)]">
                   <table key={`dependent-driver-${DRIVER_COLUMN_HEADERS.join('|')}`} className="min-w-full border-collapse text-xs">
                     <thead>
                       <tr>
-                        <th rowSpan={2} className="min-w-[140px] border border-slate-300 bg-slate-900 px-3 py-2.5 text-left text-[11px] font-semibold tracking-wide text-white">항목</th>
-                        <th rowSpan={2} className="min-w-[90px] border border-slate-300 bg-slate-900 px-3 py-2.5 text-center text-[11px] font-semibold tracking-wide text-white">전년</th>
-                        <th colSpan={2} className="border border-slate-300 bg-slate-900 px-3 py-2.5 text-center text-[11px] font-semibold tracking-wide text-white">계획</th>
-                        <th colSpan={4} className="border border-slate-300 bg-slate-900 px-3 py-2.5 text-center text-[11px] font-semibold tracking-wide text-white">Rolling</th>
+                        <th rowSpan={2} className="min-w-[140px] border border-[#2e3d5f] bg-[#1f2a44] px-3 py-2.5 text-left text-[11px] font-semibold tracking-wide text-white">항목</th>
+                        <th rowSpan={2} className="min-w-[90px] border border-[#2e3d5f] bg-[#1f2a44] px-3 py-2.5 text-center text-[11px] font-semibold tracking-wide text-white">전년</th>
+                        <th colSpan={2} className="border border-[#2e3d5f] bg-[#1f2a44] px-3 py-2.5 text-center text-[11px] font-semibold tracking-wide text-white">계획</th>
+                        <th colSpan={4} className="border border-[#2e3d5f] bg-[#1f2a44] px-3 py-2.5 text-center text-[11px] font-semibold tracking-wide text-white">Rolling</th>
                       </tr>
                       <tr>
-                        <th className="min-w-[90px] border border-slate-300 bg-slate-800 px-3 py-2 text-center text-[11px] font-semibold tracking-wide text-white">금액</th>
-                        <th className="min-w-[70px] border border-slate-300 bg-slate-800 px-3 py-2 text-center text-[11px] font-semibold tracking-wide text-white">YOY</th>
-                        <th className="min-w-[90px] border border-slate-300 bg-slate-800 px-3 py-2 text-center text-[11px] font-semibold tracking-wide text-white">금액</th>
-                        <th className="min-w-[70px] border border-slate-300 bg-slate-800 px-3 py-2 text-center text-[11px] font-semibold tracking-wide text-white">YOY</th>
-                        <th className="min-w-[100px] border border-slate-300 bg-slate-800 px-3 py-2 text-center text-[11px] font-semibold tracking-wide text-white">계획대비 증감</th>
-                        <th className="min-w-[100px] border border-slate-300 bg-slate-800 px-3 py-2 text-center text-[11px] font-semibold tracking-wide text-white">계획대비 증감(%)</th>
+                        <th className="min-w-[90px] border border-[#3b4b6f] bg-[#2a3654] px-3 py-2 text-center text-[11px] font-semibold tracking-wide text-white">금액</th>
+                        <th className="min-w-[70px] border border-[#3b4b6f] bg-[#2a3654] px-3 py-2 text-center text-[11px] font-semibold tracking-wide text-white">YOY</th>
+                        <th className="min-w-[90px] border border-[#3b4b6f] bg-[#2a3654] px-3 py-2 text-center text-[11px] font-semibold tracking-wide text-white">금액</th>
+                        <th className="min-w-[70px] border border-[#3b4b6f] bg-[#2a3654] px-3 py-2 text-center text-[11px] font-semibold tracking-wide text-white">YOY</th>
+                        <th className="min-w-[100px] border border-[#3b4b6f] bg-[#2a3654] px-3 py-2 text-center text-[11px] font-semibold tracking-wide text-white">계획대비 증감</th>
+                        <th className="min-w-[100px] border border-[#3b4b6f] bg-[#2a3654] px-3 py-2 text-center text-[11px] font-semibold tracking-wide text-white">계획대비 증감(%)</th>
                       </tr>
                     </thead>
                     <tbody>
-                      {DEPENDENT_DRIVER_ROWS.map((rowLabel, rowIndex) => (
-                        <tr key={`derived-${rowLabel}`} className="bg-white odd:bg-slate-50/80 hover:bg-amber-50">
-                          <td className="border-b border-slate-200 px-3 py-2.5 font-semibold text-slate-700">{rowLabel}</td>
-                          {DRIVER_COLUMN_HEADERS.map((column, columnIndex) => {
-                            const planValue =
-                              ANNUAL_PLAN_BRANDS.reduce<number | null>((sum, planBrand) => {
-                                const value = dependentPlanValues[rowLabel]?.[planBrand];
-                                if (value == null || !Number.isFinite(value)) return sum;
-                                return (sum ?? 0) + value;
-                              }, null);
-                            const prevValue =
-                              rowIndex === 0
-                                ? prevYearHqDriverTotalRow?.sellOutTotal
-                                : rowIndex === 1
-                                  ? prevYearHqDriverTotalRow?.sellInTotal
-                                  : prevYearHqDriverTotalRow?.closing;
-                            const rollingValue =
-                              rowIndex === 0
-                                ? hqDriverTotalRow?.sellOutTotal
-                                : rowIndex === 1
-                                  ? hqDriverTotalRow?.sellInTotal
-                                  : hqDriverTotalRow?.closing;
+                      {DEPENDENT_DRIVER_ROWS.map((rowLabel, rowIndex) => {
+                        const isBrandOpen = dependentDriverBrandOpen[rowLabel] ?? false;
+                        const pickRolling = (row: typeof hqDriverTotalRow) =>
+                          rowIndex === 0 ? row?.sellOutTotal : rowIndex === 1 ? row?.sellInTotal : row?.closing;
+                        const pickPrev = (row: typeof prevYearHqDriverTotalRow) =>
+                          rowIndex === 0 ? row?.sellOutTotal : rowIndex === 1 ? row?.sellInTotal : row?.closing;
 
-                            const yoyByPlanVsPrev =
-                              planValue != null && prevValue != null && Number.isFinite(planValue) && Number.isFinite(prevValue) && prevValue !== 0
-                                ? `${Math.round((planValue / prevValue) * 100).toLocaleString()}%`
-                                : '-';
-                            const planVsRolling =
-                              planValue != null && rollingValue != null && Number.isFinite(planValue) && Number.isFinite(rollingValue) && planValue !== 0
-                                ? `${Math.round((rollingValue / planValue) * 100).toLocaleString()}%`
-                                : '-';
-                            const planVsRollingAmount =
-                              planValue != null && rollingValue != null && Number.isFinite(planValue) && Number.isFinite(rollingValue)
-                                ? formatDriverNumber(rollingValue - planValue)
-                                : '-';
+                        const planValue = ANNUAL_PLAN_BRANDS.reduce<number | null>((sum, planBrand) => {
+                          const value = dependentPlanValues[rowLabel]?.[planBrand];
+                          if (value == null || !Number.isFinite(value)) return sum;
+                          return (sum ?? 0) + value;
+                        }, null);
+                        const prevValue = pickPrev(prevYearHqDriverTotalRow);
+                        const rollingValue = pickRolling(hqDriverTotalRow);
 
-                            const displayValue =
-                              column === '계획금액'
-                                ? (planValue == null ? '-' : formatDriverNumber(planValue))
-                                : column === '계획YOY'
-                                  ? yoyByPlanVsPrev
-                                  : column === '계획대비 증감'
-                                    ? planVsRollingAmount
-                                    : column === '계획대비 증감(%)'
-                                      ? planVsRolling
-                                      : getDependentDriverCellValue(column, columnIndex, rowIndex, hqDriverTotalRow, prevYearHqDriverTotalRow);
+                        const yoyByPlanVsPrev =
+                          planValue != null && prevValue != null && Number.isFinite(planValue) && Number.isFinite(prevValue) && prevValue !== 0
+                            ? `${Math.round((planValue / prevValue) * 100).toLocaleString()}%`
+                            : '-';
+                        const planVsRolling =
+                          planValue != null && rollingValue != null && Number.isFinite(planValue) && Number.isFinite(rollingValue) && planValue !== 0
+                            ? `${Math.round((rollingValue / planValue) * 100).toLocaleString()}%`
+                            : '-';
+                        const planVsRollingAmount =
+                          planValue != null && rollingValue != null && Number.isFinite(planValue) && Number.isFinite(rollingValue)
+                            ? formatDriverNumber(rollingValue - planValue)
+                            : '-';
 
-                            return (
-                              <td key={`derived-${rowLabel}-${columnIndex}`} className="border-b border-slate-200 px-3 py-2.5 text-right text-sm font-semibold text-slate-950">
-                                {displayValue}
+                        return (
+                          <React.Fragment key={`derived-${rowLabel}`}>
+                            <tr
+                              className="bg-white odd:bg-slate-50/70 hover:bg-amber-50/60 cursor-pointer select-none"
+                              onClick={() => setDependentDriverBrandOpen((prev) => ({ ...prev, [rowLabel]: !prev[rowLabel] }))}
+                            >
+                              <td className="border-b border-slate-200 px-3 py-2.5 font-semibold text-slate-700">
+                                <span>{rowLabel}</span>
+                                <span className="ml-1.5 text-[10px] text-slate-400">{isBrandOpen ? '▲' : '▼'}</span>
                               </td>
-                            );
-                          })}
-                        </tr>
-                      ))}
+                              {DRIVER_COLUMN_HEADERS.map((column, columnIndex) => {
+                                const displayValue =
+                                  column === '계획금액'
+                                    ? (planValue == null ? '-' : formatDriverNumber(planValue))
+                                    : column === '계획YOY'
+                                      ? yoyByPlanVsPrev
+                                      : column === '계획대비 증감'
+                                        ? planVsRollingAmount
+                                        : column === '계획대비 증감(%)'
+                                          ? planVsRolling
+                                          : getDependentDriverCellValue(column, columnIndex, rowIndex, hqDriverTotalRow, prevYearHqDriverTotalRow);
+                                return (
+                                  <td key={`derived-${rowLabel}-${columnIndex}`} className="border-b border-slate-200 px-3 py-2.5 text-right text-sm font-semibold text-slate-950">
+                                    {displayValue}
+                                  </td>
+                                );
+                              })}
+                            </tr>
+                            {isBrandOpen && ANNUAL_PLAN_BRANDS.map((b) => {
+                              const brandRow = perBrandTopTable[b]?.hq.rows.find((r) => r.isTotal) ?? null;
+                              const prevBrandRow = perBrandPrevYearTableData[b]?.hq.rows.find((r) => r.isTotal) ?? null;
+                              const brandPlanValue = dependentPlanValues[rowLabel]?.[b] ?? null;
+                              const brandRolling = pickRolling(brandRow);
+                              const brandPrev = pickPrev(prevBrandRow);
+
+                              const brandYoy =
+                                brandPlanValue != null && brandPrev != null && Number.isFinite(brandPlanValue) && Number.isFinite(brandPrev) && brandPrev !== 0
+                                  ? `${Math.round((brandPlanValue / brandPrev) * 100).toLocaleString()}%`
+                                  : '-';
+                              const brandPlanVsRolling =
+                                brandPlanValue != null && brandRolling != null && Number.isFinite(brandPlanValue) && Number.isFinite(brandRolling) && brandPlanValue !== 0
+                                  ? `${Math.round((brandRolling / brandPlanValue) * 100).toLocaleString()}%`
+                                  : '-';
+                              const brandPlanVsRollingAmt =
+                                brandPlanValue != null && brandRolling != null && Number.isFinite(brandPlanValue) && Number.isFinite(brandRolling)
+                                  ? formatDriverNumber(brandRolling - brandPlanValue)
+                                  : '-';
+
+                              return (
+                                <tr key={`derived-${rowLabel}-brand-${b}`} className="bg-amber-50/35 hover:bg-amber-50/65">
+                                  <td className="border-b border-slate-100 pl-7 pr-3 py-2 text-xs text-slate-600">
+                                    <span className="text-slate-400 mr-1">ㄴ</span>{b}
+                                  </td>
+                                  {DRIVER_COLUMN_HEADERS.map((column, columnIndex) => {
+                                    const val =
+                                      column === '전년'
+                                        ? formatDriverNumber(brandPrev)
+                                        : column === '계획금액'
+                                          ? (brandPlanValue == null ? '-' : formatDriverNumber(brandPlanValue))
+                                          : column === '계획YOY'
+                                            ? brandYoy
+                                            : column === 'Rolling금액'
+                                              ? formatDriverNumber(brandRolling)
+                                              : column === 'RollingYOY'
+                                                ? (brandRolling != null && brandPrev != null && Number.isFinite(brandRolling) && Number.isFinite(brandPrev) && brandPrev !== 0
+                                                  ? `${Math.round((brandRolling / brandPrev) * 100).toLocaleString()}%`
+                                                  : '-')
+                                                : column === '계획대비 증감'
+                                                  ? brandPlanVsRollingAmt
+                                                  : column === '계획대비 증감(%)'
+                                                    ? brandPlanVsRolling
+                                                    : '-';
+                                    return (
+                                      <td key={`derived-${rowLabel}-brand-${b}-${columnIndex}`} className="border-b border-slate-100 px-3 py-2 text-right text-xs text-slate-700">
+                                        {val}
+                                      </td>
+                                    );
+                                  })}
+                                </tr>
+                              );
+                            })}
+                          </React.Fragment>
+                        );
+                      })}
                       {false && DEPENDENT_DRIVER_ROWS.map((rowLabel, rowIndex) => (
                         <tr key={rowLabel} className="bg-white hover:bg-slate-50">
                           <td className="border-b border-slate-200 px-3 py-2 font-medium text-slate-700">{rowLabel}</td>
@@ -3731,8 +3794,29 @@ export default function InventoryDashboard() {
                 </div>
               </div>
             </div>
+            <div className="mt-5 border-t border-slate-300/80" />
           </div>
         )}
+
+        {/* 브랜드별 토글 헤더 */}
+        <div className="mt-3" style={{ paddingLeft: '1.5%', paddingRight: '1.5%' }}>
+          <div className="grid grid-cols-3 gap-4">
+            {ANNUAL_PLAN_BRANDS.map((b) => {
+              const isOpen = inventoryBrandOpen[b];
+              return (
+                <button
+                  key={`inventory-toggle-${b}`}
+                  type="button"
+                  onClick={() => setInventoryBrandOpen((prev) => ({ ...prev, [b]: !prev[b] }))}
+                  className="flex items-center justify-between rounded-lg border border-slate-300 bg-white px-3 py-2 text-left shadow-sm hover:bg-slate-50"
+                >
+                  <span className="text-sm font-semibold text-slate-800">{`${b} 재고자산표`}</span>
+                  <span className="text-xs text-slate-500">{isOpen ? '접기 ▲' : '펼치기 ▼'}</span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
 
         {/* 상단 재고자산표: 대리상 3열 (MLB | MLB KIDS | DISCOVERY) */}
         <div className="mt-4" style={{ paddingLeft: '1.5%', paddingRight: '1.5%' }}>
@@ -3743,12 +3827,13 @@ export default function InventoryDashboard() {
                 : perBrandTopTable[b];
               const prevData = perBrandPrevYearTableData[b];
               if (!displayData) return <div key={b} className="min-w-0 text-xs text-gray-400 py-8 text-center">로딩 중…</div>;
-              return (
+              return inventoryBrandOpen[b] ? (
                 <div key={b} className="min-w-0">
                   <InventoryTable
                     title={`${b} 대리상 (CNY K)`}
                     data={displayData.dealer}
                     year={year}
+                    showLegend={b === 'MLB'}
                     sellInLabel="Sell-in"
                     sellOutLabel="Sell-out"
                     tableType="dealer"
@@ -3759,7 +3844,7 @@ export default function InventoryDashboard() {
                     prevYearTotalSellOut={prevData?.dealer.rows.find((r) => r.key === '재고자산합계')?.sellOutTotal}
                   />
                 </div>
-              );
+              ) : <div key={b} className="min-w-0" />;
             })}
           </div>
         </div>
@@ -3773,12 +3858,13 @@ export default function InventoryDashboard() {
                 : perBrandTopTable[b];
               const prevData = perBrandPrevYearTableData[b];
               if (!displayData) return <div key={b} className="min-w-0 text-xs text-gray-400 py-8 text-center">로딩 중…</div>;
-              return (
+              return inventoryBrandOpen[b] ? (
                 <div key={b} className="min-w-0">
                   <InventoryTable
                     title={`${b} 본사 (CNY K)`}
                     data={displayData.hq}
                     year={year}
+                    showLegend={b === 'MLB'}
                     sellInLabel="상품매입"
                     sellOutLabel="대리상출고"
                     tableType="hq"
@@ -3793,7 +3879,7 @@ export default function InventoryDashboard() {
                     ) : undefined}
                   />
                 </div>
-              );
+              ) : <div key={b} className="min-w-0" />;
             })}
           </div>
         </div>
@@ -4041,7 +4127,7 @@ export default function InventoryDashboard() {
               <SectionIcon>
                 <span className="text-lg">💤</span>
               </SectionIcon>
-              <span className="text-sm font-bold text-gray-700">대리상 리테일매출(보정)</span>
+              <span className="text-sm font-bold text-gray-700">대리상 리테일매출</span>
               <span className="text-xs font-normal text-gray-400">(단위: CNY K)</span>
               <span className="text-xs font-normal text-orange-500 ml-1">월별 = 기초재고 + 출고 − 기말재고</span>
               <span className="ml-auto text-gray-400 text-xs shrink-0">
@@ -4057,7 +4143,7 @@ export default function InventoryDashboard() {
                     <div key={b} className={b === 'MLB' ? '' : 'mt-6'}>
                       <div className="text-sm font-bold text-gray-800 mb-1 pt-1 border-t border-gray-400">{b}</div>
                       <InventoryMonthlyTable
-                        firstColumnHeader="대리상 리테일매출(보정)"
+                        firstColumnHeader="대리상 리테일매출"
                         data={tableData}
                         year={year}
                         showOpening={false}
@@ -4167,7 +4253,7 @@ export default function InventoryDashboard() {
             <SectionIcon>
               <span className="text-lg">📊</span>
             </SectionIcon>
-            <span className="text-sm font-bold text-gray-700">리테일 매출</span>
+            <span className="text-sm font-bold text-gray-700">{year === 2025 ? '본사 리테일매출' : '리테일 매출'}</span>
             <span className="text-xs font-normal text-gray-400">
               {year === 2025 ? '(단위: CNY K / 실적: 1~12월)' : year === 2026 ? '(단위: CNY K / 실적: 1~2월, 3~12월 성장률 보정)' : `(단위: CNY K / 실적 기준: ~${retailData?.closedThrough ?? '--'})`}
             </span>

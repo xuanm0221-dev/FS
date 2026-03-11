@@ -35,10 +35,12 @@ interface Props {
   bottomContent?: React.ReactNode;
   /** 2026 전체탭: 2025 스타일 범례 표시 (Sell-through·재고주수 기본 공식) */
   use2025Legend?: boolean;
+  /** false면 표 하단 범례를 숨김 */
+  showLegend?: boolean;
 }
 
 // 헤더 스타일
-const TH = 'px-2 py-2 text-center text-xs font-semibold bg-[#1a2e5a] text-white border border-[#2e4070] whitespace-nowrap';
+const TH = 'px-2 py-2 text-center text-xs font-semibold bg-[#eef3f8] text-[#24334d] border border-[#d7e0ea] whitespace-nowrap';
 
 // YOY 합성 행 (의류합계-당년F 사이)
 const YOY_ROW_KEY = 'YOY';
@@ -64,27 +66,27 @@ const yoyRow: YoyRow = {
 
 // 행 배경색
 function rowBg(row: InventoryRow | YoyRow): string {
-  if (isYoyRow(row)) return 'bg-sky-100';
-  if (row.isTotal) return 'bg-sky-100';
-  if (row.isSubtotal) return 'bg-gray-100';
-  return 'bg-white hover:bg-gray-50';
+  if (isYoyRow(row)) return 'bg-[#edf5ff]';
+  if (row.isTotal) return 'bg-[#f3f8ff]';
+  if (row.isSubtotal) return 'bg-[#f8fafc]';
+  return 'bg-white hover:bg-[#f9fbfd]';
 }
 
 // 셀 스타일
 function cellCls(row: InventoryRow | YoyRow, extra = ''): string {
   if (isYoyRow(row)) {
-    return 'px-2 py-1.5 text-right text-xs border-b border-gray-200 tabular-nums align-middle italic font-bold text-[#1a2e5a]';
+    return 'px-2 py-1.5 text-right text-xs border-b border-[#e3eaf2] tabular-nums align-middle italic font-bold text-[#2a4674]';
   }
-  const base = 'px-2 py-1.5 text-right text-xs border-b border-gray-200 tabular-nums align-middle';
+  const base = 'px-2 py-1.5 text-right text-xs border-b border-[#e3eaf2] tabular-nums align-middle';
   const weight = row.isTotal || row.isSubtotal ? 'font-semibold' : 'font-normal';
   return `${base} ${weight} ${extra}`;
 }
 
 function labelCls(row: InventoryRow | YoyRow): string {
   if (isYoyRow(row)) {
-    return 'py-1.5 text-xs border-b border-gray-200 whitespace-nowrap align-middle pl-2 pr-2 italic font-bold text-[#1a2e5a]';
+    return 'py-1.5 text-xs border-b border-[#e3eaf2] whitespace-nowrap align-middle pl-2 pr-2 italic font-bold text-[#2a4674]';
   }
-  const base = 'py-1.5 text-xs border-b border-gray-200 whitespace-nowrap align-middle';
+  const base = 'py-1.5 text-xs border-b border-[#e3eaf2] whitespace-nowrap align-middle';
   const weight = row.isTotal || row.isSubtotal ? 'font-semibold' : 'font-normal';
   const indent = row.isLeaf ? 'pl-6 pr-2' : 'pl-2 pr-2';
   return `${base} ${weight} ${indent}`;
@@ -92,6 +94,29 @@ function labelCls(row: InventoryRow | YoyRow): string {
 
 function formatWithComma(value: number): string {
   return Number.isFinite(value) ? Math.round(value).toLocaleString() : '';
+}
+
+const BOX_SINGLE = 'shadow-[inset_0_0_0_2px_#4b5563]';
+const BOX_TOP = 'shadow-[inset_0_2px_0_0_#4b5563,inset_2px_0_0_0_#4b5563,inset_-2px_0_0_0_#4b5563]';
+const BOX_MIDDLE = 'shadow-[inset_2px_0_0_0_#4b5563,inset_-2px_0_0_0_#4b5563]';
+const BOX_BOTTOM = 'shadow-[inset_0_-2px_0_0_#4b5563,inset_2px_0_0_0_#4b5563,inset_-2px_0_0_0_#4b5563]';
+
+function getBrandAccent(title: string): string {
+  if (title.includes('MLB KIDS')) return '#149e9e';
+  if (title.includes('DISCOVERY')) return '#f08a24';
+  return '#1f5aa6';
+}
+
+function parseTitleMeta(title: string): {
+  brandLabel: string;
+} {
+  const brandLabel = title
+    .replace('(CNY K)', '')
+    .replace('대리상', '')
+    .replace('본사', '')
+    .trim() || title;
+
+  return { brandLabel };
 }
 
 /** 본사 재고자산표 중요 지표 셀 (YOY 상품매입·기말, ACC 구간 상품매입) */
@@ -107,10 +132,10 @@ function isHqSellInBoxLast(row: InventoryRow | YoyRow): boolean {
 }
 function getHqSellInBoxClass(tableType: string | undefined, row: InventoryRow | YoyRow): string {
   if (tableType !== 'hq') return '';
-  if (isYoyRow(row)) return 'shadow-[inset_0_0_0_2px_#f87171]';
-  if (isHqSellInBoxFirst(row)) return 'shadow-[inset_0_2px_0_0_#f87171,inset_2px_0_0_0_#f87171,inset_-2px_0_0_0_#f87171]';
-  if (isHqSellInBoxMiddle(row)) return 'shadow-[inset_2px_0_0_0_#f87171,inset_-2px_0_0_0_#f87171]';
-  if (isHqSellInBoxLast(row)) return 'shadow-[inset_0_-2px_0_0_#f87171,inset_2px_0_0_0_#f87171,inset_-2px_0_0_0_#f87171]';
+  if (isYoyRow(row)) return BOX_SINGLE;
+  if (isHqSellInBoxFirst(row)) return BOX_TOP;
+  if (isHqSellInBoxMiddle(row)) return BOX_MIDDLE;
+  if (isHqSellInBoxLast(row)) return BOX_BOTTOM;
   return '';
 }
 function isHqImportantClosingCell(tableType: string | undefined, row: InventoryRow | YoyRow): boolean {
@@ -119,18 +144,18 @@ function isHqImportantClosingCell(tableType: string | undefined, row: InventoryR
 
 /** 대리상 YOY Sell-in·Sell-out 박스 (단일 셀) */
 function getDealerYoySellInBoxClass(tableType: string | undefined, row: InventoryRow | YoyRow): string {
-  return tableType === 'dealer' && isYoyRow(row) ? 'shadow-[inset_0_0_0_2px_#f87171]' : '';
+  return tableType === 'dealer' && isYoyRow(row) ? BOX_SINGLE : '';
 }
 function getDealerYoySellOutBoxClass(tableType: string | undefined, row: InventoryRow | YoyRow): string {
-  return tableType === 'dealer' && isYoyRow(row) ? 'shadow-[inset_0_0_0_2px_#f87171]' : '';
+  return tableType === 'dealer' && isYoyRow(row) ? BOX_SINGLE : '';
 }
 
 /** 대리상·본사 ACC 재고주수 박스 (ACC합계~기타 하나의 박스) */
 function getAccWoiBoxClass(tableType: string | undefined, row: InventoryRow | YoyRow): string {
   if (tableType !== 'dealer' && tableType !== 'hq') return '';
-  if (isHqSellInBoxFirst(row)) return 'shadow-[inset_0_2px_0_0_#f87171,inset_2px_0_0_0_#f87171,inset_-2px_0_0_0_#f87171]';
-  if (isHqSellInBoxMiddle(row)) return 'shadow-[inset_2px_0_0_0_#f87171,inset_-2px_0_0_0_#f87171]';
-  if (isHqSellInBoxLast(row)) return 'shadow-[inset_0_-2px_0_0_#f87171,inset_2px_0_0_0_#f87171,inset_-2px_0_0_0_#f87171]';
+  if (isHqSellInBoxFirst(row)) return BOX_TOP;
+  if (isHqSellInBoxMiddle(row)) return BOX_MIDDLE;
+  if (isHqSellInBoxLast(row)) return BOX_BOTTOM;
   return '';
 }
 
@@ -160,7 +185,9 @@ export default function InventoryTable({
   sideContent,
   bottomContent,
   use2025Legend = false,
+  showLegend = true,
 }: Props) {
+  const titleMeta = parseTitleMeta(title);
   const isWoiEditable = year === 2026 && !!onWoiChange;
   const isAccRow = (key: string) => ACC_KEYS.includes(key as AccKey);
   const isClothingLeafRow = (row: InventoryRow | YoyRow) => !isYoyRow(row) && SEASON_KEYS.includes((row as InventoryRow).key as SeasonKey);
@@ -244,63 +271,47 @@ export default function InventoryTable({
   const inputCls = 'w-full min-w-0 text-right text-xs border-0 bg-transparent outline-none tabular-nums px-1 py-0.5';
 
   return (
-    <div className="mb-8 flex flex-col">
-      {/* 테이블 제목 */}
-      <div className="flex flex-wrap items-center gap-3 mb-2">
-        <div
-          className={`
-            border-l-4 rounded-r-md px-4 py-2 text-sm font-semibold tracking-tight
-            border-teal-600 bg-teal-50/80 text-slate-800
-          `}
-        >
-          {title}
+    <div className="mb-6 flex flex-col">
+      {(titleRight || titleNote) && (
+        <div className="mb-2 flex flex-wrap items-center gap-2">
+          {titleRight}
+          {titleNote && !titleRight && <span className="text-[11px] text-slate-500">{titleNote}</span>}
         </div>
-        {titleRight && (
-          <>
-            <span className="text-gray-300">|</span>
-            {titleRight}
-          </>
-        )}
-        {titleNote && !titleRight && (
-          <span className="text-xs text-gray-500">
-            {titleNote}
-          </span>
-        )}
-      </div>
+      )}
 
       <div className="flex items-end" style={{ gap: '1.5%' }}>
-      <div className="flex-1 min-w-0 overflow-x-auto rounded border border-gray-200 shadow-sm">
+      <div className="flex-1 min-w-0 overflow-x-auto rounded-lg border border-[#d8e0ea]">
         <table className="min-w-full border-collapse text-xs" style={{ tableLayout: 'fixed', width: '100%' }}>
           <thead>
             <tr>
-              <th className={TH} style={{ width: '7%', minWidth: 80 }}>구분</th>
+              <th className={TH} style={{ width: '7%', minWidth: 80 }}>{tableType === 'hq' ? '본사 재고 (K)' : '대리상 재고 (K)'}</th>
               <th className={TH} style={{ width: '5%', minWidth: 50 }}>
                 기초<br />
-                <span className="font-normal text-[10px] text-blue-200">({prevYear}년기말)</span>
+                <span className="font-normal text-[10px] text-slate-500">({prevYear}년기말)</span>
               </th>
               <th className={TH} style={{ width: '5%', minWidth: 50 }}>
                 {sellInLabel}<br />
-                <span className="font-normal text-[10px] text-blue-200">(연간)</span>
+                <span className="font-normal text-[10px] text-slate-500">(연간)</span>
               </th>
               <th className={TH} style={{ width: '5%', minWidth: 50 }}>
                 {sellOutLabel}<br />
-                <span className="font-normal text-[10px] text-blue-200">(연간)</span>
+                <span className="font-normal text-[10px] text-slate-500">(연간)</span>
               </th>
               {tableType === 'hq' && (
                 <th className={TH} style={{ width: '5%', minWidth: 50 }}>
                   본사판매<br />
-                  <span className="font-normal text-[10px] text-blue-200">(연간)</span>
+                  <span className="font-normal text-[10px] text-slate-500">(연간)</span>
                 </th>
               )}
               <th className={TH} style={{ width: '5%', minWidth: 50 }}>
                 기말<br />
-                <span className="font-normal text-[10px] text-blue-200">({year}년기말)</span>
+                <span className="font-normal text-[10px] text-slate-500">({year}년기말)</span>
               </th>
               <th className={TH} style={{ width: '5%', minWidth: 50 }}>증감</th>
               <th className={TH} style={{ width: '5%', minWidth: 50 }}>Sell-through</th>
               <th className={TH} style={{ width: '5%', minWidth: 50 }}>
                 재고주수<br />
-                <span className="font-normal text-[10px] text-blue-200">(목표)</span>
+                <span className="font-normal text-[10px] text-slate-500">(목표)</span>
               </th>
             </tr>
           </thead>
@@ -398,7 +409,7 @@ export default function InventoryTable({
                   </td>
                 )}
                 {/* 기말 */}
-                <td className={`${cellCls(row)} ${isHqImportantClosingCell(tableType, row) ? 'shadow-[inset_0_0_0_2px_#f87171]' : ''}`}>
+                <td className={`${cellCls(row)} ${isHqImportantClosingCell(tableType, row) ? BOX_SINGLE : ''}`}>
                   {isYoyRow(row)
                     ? yoyClosing != null
                       ? formatPct(yoyClosing * 100)
@@ -406,7 +417,7 @@ export default function InventoryTable({
                     : formatKValue((row as InventoryRow).closing)}
                 </td>
                 {/* 증감 */}
-                <td className={`${cellCls(row)} ${!isYoyRow(row) && getDisplayDelta(row as InventoryRow) < 0 ? 'text-blue-600' : !isYoyRow(row) && getDisplayDelta(row as InventoryRow) > 0 ? 'text-red-500' : ''}`}>
+                <td className={`${cellCls(row)} ${!isYoyRow(row) && getDisplayDelta(row as InventoryRow) < 0 ? 'text-black' : !isYoyRow(row) && getDisplayDelta(row as InventoryRow) > 0 ? 'text-red-500' : ''}`}>
                   {isYoyRow(row) ? '-' : (getDisplayDelta(row as InventoryRow) > 0 ? '+' : '') + formatKValue(getDisplayDelta(row as InventoryRow))}
                 </td>
                 {/* Sell-through */}
@@ -420,12 +431,7 @@ export default function InventoryTable({
                 </td>
                 {/* 재고주수 (2026년 ACC 리프 행 편집 가능, 본사판매용 패턴. 의류 하위는 미표시) */}
                 <td
-                  className={`${cellCls(row)} ${getAccWoiBoxClass(tableType, row)} ${
-                    isYoyRow(row) || isClothingLeafRow(row) ? '' :
-                    (row as InventoryRow).woi > 0 && (row as InventoryRow).woi <= 10 ? 'text-green-600' :
-                    (row as InventoryRow).woi > 10 && (row as InventoryRow).woi <= 20 ? 'text-yellow-600' :
-                    (row as InventoryRow).woi > 20 ? 'text-red-500' : ''
-                  } ${isWoiEditableForRow(row as InventoryRow) ? `group cursor-text ${editableCellBgCls}` : ''}`}
+                  className={`${cellCls(row)} ${getAccWoiBoxClass(tableType, row)} text-black ${isWoiEditableForRow(row as InventoryRow) ? `group cursor-text ${editableCellBgCls}` : ''}`}
                   onClick={isWoiEditableForRow(row as InventoryRow) ? () => !isEditing(row.key, 'woi') && startEdit(row as InventoryRow, 'woi', (row as InventoryRow).woi || 0) : undefined}
                 >
                   {isYoyRow(row) ? '-' : isClothingLeafRow(row) ? '' : isWoiEditableForRow(row as InventoryRow) ? (
@@ -459,7 +465,7 @@ export default function InventoryTable({
       {bottomContent && <div className="mt-2">{bottomContent}</div>}
 
       {/* 범례: 토글 가능 */}
-      <div className="mt-2 px-1 text-[11px]">
+      {showLegend && <div className="mt-2 px-1 text-[11px]">
         <button
           type="button"
           onClick={() => setLegendOpen((v) => !v)}
@@ -536,7 +542,7 @@ export default function InventoryTable({
         )}
         </div>
         )}
-      </div>
+      </div>}
     </div>
   );
 }

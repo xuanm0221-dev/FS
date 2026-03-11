@@ -791,7 +791,10 @@ export default function InventoryDashboard() {
   const [shipmentProgressRows, setShipmentProgressRows] = useState<ShipmentProgressRow[]>([]);
   const [accShipmentRatioRows, setAccShipmentRatioRows] = useState<AccShipmentRatioRow[]>([]);
 
-  // ?붾퀎 ?뱀뀡 ?좉? (湲곕낯 ?묓옒)
+  // 보조지표 상위 토글
+  const [auxiliaryOpen, setAuxiliaryOpen] = useState(true);
+
+  // 월별 섹션 토글 (기본 닫힘)
   const [monthlyOpen, setMonthlyOpen] = useState(false);
   const [retailOpen, setRetailOpen] = useState(false);
   const [adjustedRetailOpen, setAdjustedRetailOpen] = useState(false);
@@ -3910,6 +3913,20 @@ export default function InventoryDashboard() {
           </div>
         </div>
 
+        {/* 재고자산 보조지표 상위 토글 */}
+        <div className="mt-12 border-t-2 border-gray-400 pt-6">
+          <button
+            type="button"
+            onClick={() => setAuxiliaryOpen((v) => !v)}
+            className="flex items-center gap-2 w-full text-left py-2 mb-2"
+          >
+            <span className="text-base font-bold text-slate-800">재고자산 보조지표</span>
+            <span className="ml-auto text-gray-400 text-sm shrink-0">
+              {auxiliaryOpen ? '접기 ▲' : '펼치기 ▼'}
+            </span>
+          </button>
+          {auxiliaryOpen && (
+            <div>
         {year === 2026 && (
           <div className="mt-10 border-t border-gray-300 pt-8">
             {/* 공통 헤더 */}
@@ -4498,6 +4515,9 @@ export default function InventoryDashboard() {
                 </div>
               )}
             </>
+          )}
+        </div>
+            </div>
           )}
         </div>
       </div>

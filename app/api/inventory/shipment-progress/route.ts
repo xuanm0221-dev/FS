@@ -6,7 +6,7 @@ import Papa from 'papaparse';
 export const runtime = 'nodejs';
 
 type ProgressBrand = 'MLB' | 'MLB KIDS' | 'DISCOVERY';
-type ProgressSeason = '당년S' | '당년F';
+type ProgressSeason = '당년S' | '당년F' | '1년차' | '차기시즌';
 
 export interface ShipmentProgressRow {
   brand: ProgressBrand;
@@ -35,6 +35,8 @@ function normalizeSeason(raw: string): ProgressSeason | null {
   const v = raw.trim();
   if (v === '당년S') return '당년S';
   if (v === '당년F') return '당년F';
+  if (v === '1년차') return '1년차';
+  if (v === '차기시즌') return '차기시즌';
   return null;
 }
 

@@ -73,6 +73,8 @@ interface Props {
   onSave: () => void;
   onRecalc: (mode: 'current' | 'annual') => void;
   allBrandsBgLoaded?: boolean;
+  brandBgLoadedCount?: number;
+  totalBrands?: number;
 }
 
 export default function InventoryFilterBar({
@@ -87,6 +89,8 @@ export default function InventoryFilterBar({
   onSave,
   onRecalc,
   allBrandsBgLoaded = false,
+  brandBgLoadedCount = 0,
+  totalBrands = 3,
 }: Props) {
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
@@ -199,9 +203,9 @@ export default function InventoryFilterBar({
         )}
 
         <div
-          className={`rounded-full border px-3 py-1.5 text-xs font-medium shadow-sm ${
+          className={`flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-medium shadow-sm ${
             statusLoading
-              ? 'border-red-300 bg-red-100 text-red-700'
+              ? 'border-amber-300 bg-amber-50 text-amber-700'
               : statusError
                 ? 'border-red-200 bg-red-50 text-red-600'
                 : allBrandsBgLoaded
@@ -215,7 +219,14 @@ export default function InventoryFilterBar({
               ? '오류'
               : allBrandsBgLoaded
                 ? '3개 브랜드 로딩완료'
-                : '로딩완료'}
+                : (
+                  <>
+                    <span className="font-mono tracking-tight">
+                      {'█'.repeat(brandBgLoadedCount)}{'░'.repeat(totalBrands - brandBgLoadedCount)}
+                    </span>
+                    <span>{brandBgLoadedCount}/{totalBrands}</span>
+                  </>
+                )}
         </div>
       </div>
     </div>

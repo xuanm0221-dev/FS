@@ -57,6 +57,11 @@ export default function Home() {
   const [cfSummaryNumbers, setCfSummaryNumbers] = useState<CFExplanationNumbers | null>(null);
   const [loading, setLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
+  const [bsLoadStep, setBsLoadStep] = useState<number>(0);
+  const [bsTotalSteps, setBsTotalSteps] = useState<number>(1);
+  const [cfLoadStep, setCfLoadStep] = useState<number>(0);
+  const [cfTotalSteps, setCfTotalSteps] = useState<number>(2);
+  const [cfLoadingLabel, setCfLoadingLabel] = useState<string>('');
   
   // 비고 데이터 타입
   const [bsRemarks, setBsRemarks] = useState<Map<string, string>>(new Map());
@@ -220,6 +225,11 @@ export default function Home() {
   const loadData = async (type: TabType, year?: number, month?: number, brand?: string | null) => {
     setLoading(true);
     setError(null);
+    if (type === 'BS') {
+      const total = (year === 2025 || year === 2026) ? 2 : 1;
+      setBsTotalSteps(total);
+      setBsLoadStep(1);
+    }
 
     try {
       let url = '';
@@ -264,6 +274,7 @@ export default function Home() {
         // 전년도 데이터 로드 (2025, 2026년인 경우)
         if (year === 2025 || year === 2026) {
           const prevYear = year - 1;
+          setBsLoadStep(2);
           try {
             const prevResponse = await fetch(`/api/fs/bs?year=${prevYear}`);
             if (prevResponse.ok) {
@@ -453,13 +464,23 @@ export default function Home() {
         setCfWorkingCapitalData(null);
         setCreditRecoveryData(null);
       }
+      const cfTotal = cfYear === 2026 ? 4 : 2;
+      setCfTotalSteps(cfTotal);
+      setCfLoadStep(0);
+      setCfLoadingLabel('');
+      const makeCfFetch = (promise: Promise<Response>, label: string) =>
+        promise.then((r) => r.ok ? r.json() : null).then((data) => {
+          setCfLoadStep((prev) => prev + 1);
+          setCfLoadingLabel(label);
+          return data;
+        });
       const fetches: Promise<unknown>[] = [
-        fetch(`/api/fs/cf-hierarchy?year=${cfYear}`).then((r) => (r.ok ? r.json() : null)),
-        fetch(`/api/fs/cash-borrowing?year=${cfYear}`).then((r) => (r.ok ? r.json() : null)),
+        makeCfFetch(fetch(`/api/fs/cf-hierarchy?year=${cfYear}`), '현금흐름 계층 데이터'),
+        makeCfFetch(fetch(`/api/fs/cash-borrowing?year=${cfYear}`), '현금차입 잔액'),
       ];
       if (cfYear === 2026) {
-        fetches.push(fetch('/api/fs/bs?year=2026').then((r) => (r.ok ? r.json() : null)));
-        fetches.push(fetch('/api/annual-plan/credit-recovery?baseYearMonth=26.02').then((r) => (r.ok ? r.json() : null)));
+        fetches.push(makeCfFetch(fetch('/api/fs/bs?year=2026'), '재무상태표(2026)'));
+        fetches.push(makeCfFetch(fetch('/api/annual-plan/credit-recovery?baseYearMonth=26.02'), '여신회수 데이터'));
       }
       Promise.all(fetches)
         .then((results) => {
@@ -638,7 +659,17 @@ export default function Home() {
                 )}
               </div>
             </div>
-            {loading && <div className="p-6 text-center">로딩 중...</div>}
+            {loading && (
+              <div className="p-6 text-center font-mono text-sm text-slate-600">
+                {(() => {
+                  const filled = Math.max(1, Math.round((bsLoadStep / bsTotalSteps) * 8));
+                  const empty = 8 - filled;
+                  const bar = '█'.repeat(filled) + '░'.repeat(empty);
+                  const labels = ['재무상태표 불러오는 중...', '전년도 재무상태표 불러오는 중...'];
+                  return `${bar} ${bsLoadStep}/${bsTotalSteps}  ${labels[(bsLoadStep - 1)] ?? '불러오는 중...'}`;
+                })()}
+              </div>
+            )}
             {error && <div className="p-6 text-center text-red-500">{error}</div>}
             {bsData && !loading && (
               <>
@@ -720,7 +751,18 @@ export default function Home() {
                 </button>
               </div>
             </div>
-            {cfHierarchyLoading && <div className="p-6 text-center">로딩 중...</div>}
+            {cfHierarchyLoading && (
+              <div className="p-6 text-center font-mono text-sm text-slate-600">
+                {(() => {
+                  const filled = cfLoadStep === 0 ? 1 : Math.round((cfLoadStep / cfTotalSteps) * 8);
+                  const empty = 8 - filled;
+                  const bar = '█'.repeat(filled) + '░'.repeat(empty);
+                  return cfLoadStep === 0
+                    ? `${bar}  불러오는 중...`
+                    : `${bar} ${cfLoadStep}/${cfTotalSteps}  ${cfLoadingLabel} 완료`;
+                })()}
+              </div>
+            )}
             {error && <div className="p-6 text-center text-red-500">{error}</div>}
             {cfHierarchyData && cfHierarchyData.rows.length > 0 && !cfHierarchyLoading && (
               cfMonthsCollapsed ? (

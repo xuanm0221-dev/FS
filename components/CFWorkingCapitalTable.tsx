@@ -94,7 +94,7 @@ export default function CFWorkingCapitalTable({
     const prev = sumComp(r => r.comparisons?.prevYearAnnual ?? null);
     const curr = sumComp(r => r.comparisons?.currYearAnnual ?? null);
     const plan = sumComp(r => r.comparisons?.annualPlan ?? null);
-    const yoy = prev != null && prev !== 0 && curr != null ? ((curr - prev) / Math.abs(prev)) * 100 : null;
+    const yoy = curr != null && prev != null ? curr - prev : null;
     const year2024 = rows3.reduce((a, r) => a + (r?.year2024Value ?? 0), 0);
 
     const values: (number | null)[] = [prev, ...sumVals, curr, yoy];

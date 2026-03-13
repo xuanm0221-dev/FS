@@ -703,12 +703,14 @@ export default function InventoryDashboard() {
 
   // 3개 브랜드 백그라운드 로딩 완료 여부 (필터바 뱃지용)
   const [allBrandsBgLoaded, setAllBrandsBgLoaded] = useState(false);
+  const [brandBgLoadedCount, setBrandBgLoadedCount] = useState(0);
 
   // 2026년 재고자산탭 최초 로드 시 3개 브랜드 데이터를 백그라운드에서 병렬 fetch
   // → *DataByBrand에 저장되면 publishHqClosingByBrand 및 하위 publish 효과들이 자동으로 트리거됨
   useEffect(() => {
     if (year !== 2026) return;
     setAllBrandsBgLoaded(false);
+    setBrandBgLoadedCount(0);
     let cancelled = false;
 
     const run = async () => {
@@ -739,6 +741,7 @@ export default function InventoryDashboard() {
             setRetailDataByBrand((prev) => ({ ...prev, [b]: retail as RetailSalesResponse }));
             setShipmentDataByBrand((prev) => ({ ...prev, [b]: shipment as ShipmentSalesResponse }));
             setPurchaseDataByBrand((prev) => ({ ...prev, [b]: purchase as PurchaseResponse }));
+            if (!cancelled) setBrandBgLoadedCount((prev) => prev + 1);
           } catch {
             // 백그라운드 fetch 실패는 무시 (현재 브랜드 탭의 메인 fetch가 우선)
           }
@@ -3600,6 +3603,8 @@ export default function InventoryDashboard() {
         onRecalc={handleRecalc}
         canSave={!!(monthlyData && retailData && shipmentData && purchaseData)}
         allBrandsBgLoaded={year === 2026 && allBrandsBgLoaded}
+        brandBgLoadedCount={year === 2026 ? brandBgLoadedCount : 0}
+        totalBrands={ANNUAL_PLAN_BRANDS.length}
       />
 
       <div className="px-6 py-5">

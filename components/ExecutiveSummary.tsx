@@ -257,7 +257,9 @@ export default function ExecutiveSummary({ data, loadError, onChange, onReset, o
                   </ul>
                 </div>
                 <div className="border-l-4 border-orange-500 pl-4">
-                  <h4 className="font-bold text-base mb-2 text-orange-900">부채 증가</h4>
+                  <h4 className="font-bold text-base mb-2 text-orange-900">
+                    {data.sections.재무현황.부채증가[0]?.includes('△') ? '부채 감소' : '부채 증가'}
+                  </h4>
                   <ul className="space-y-2 text-sm text-gray-700 leading-relaxed">
                     {data.sections.재무현황.부채증가.map((line, i) => (
                       <li key={i}>• {bulletLine(line)}</li>
@@ -293,7 +295,9 @@ export default function ExecutiveSummary({ data, loadError, onChange, onReset, o
                   />
                 </div>
                 <div>
-                  <h3 className="font-medium text-gray-800 mb-2.5 text-base">부채 증가</h3>
+                  <h3 className="font-medium text-gray-800 mb-2.5 text-base">
+                    {data.sections.재무현황.부채증가[0]?.includes('△') ? '부채 감소' : '부채 증가'}
+                  </h3>
                   <textarea
                     value={data.sections.재무현황.부채증가.join('\n')}
                     onChange={(e) => handleTextChange('재무현황', '부채증가', e.target.value)}

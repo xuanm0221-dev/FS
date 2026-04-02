@@ -7,7 +7,13 @@ import { RetailSalesResponse } from '@/lib/retail-sales-types';
 import type { ShipmentSalesResponse } from '@/app/api/inventory/shipment-sales/route';
 import type { PurchaseResponse } from '@/app/api/inventory/purchase/route';
 import { buildTableDataFromMonthly } from '@/lib/build-inventory-from-monthly';
-import { buildTableData, applyAccTargetWoiOverlay, applyHqSellInSellOutPlanOverlay, rebuildTableFromLeafs } from '@/lib/inventory-calc';
+import { buildTableData, applyAccTargetWoiOverlay, applyHqSellInSellOutPlanOverlay } from '@/lib/inventory-calc';
+import {
+  finalize2026InventoryTopTable,
+  applyTopTableRetailDisplayOverlay,
+  hqTotalClosingAfterDisplay,
+  retailAnnualTotalsByRowKey,
+} from '@/lib/inventory-top-table-pipeline';
 import { SCENARIO_DEFS, SCENARIO_ORDER, type ScenarioKey, type SalesBrand } from '@/components/pl-forecast/plForecastConfig';
 import {
   saveSnapshot,
@@ -652,6 +658,18 @@ export default function InventoryDashboard() {
               purchaseRes.json(),
             ]);
             if (cancelled) return;
+            const okPayload =
+              monthlyRes.ok &&
+              retailRes.ok &&
+              shipmentRes.ok &&
+              purchaseRes.ok &&
+              !(monthly as { error?: string }).error &&
+              !(retail as { error?: string }).error &&
+              !(shipment as { error?: string }).error &&
+              !(purchase as { error?: string }).error &&
+              Array.isArray((monthly as MonthlyStockResponse).dealer?.rows) &&
+              Array.isArray((monthly as MonthlyStockResponse).hq?.rows);
+            if (!okPayload) return;
             monthlyByBrandRef.current[b] = monthly as MonthlyStockResponse;
             retailByBrandRef.current[b] = retail as RetailSalesResponse;
             shipmentByBrandRef.current[b] = shipment as ShipmentSalesResponse;
@@ -1436,7 +1454,9 @@ export default function InventoryDashboard() {
       !effectiveRetailData ||
       !shipmentData ||
       !purchaseData ||
+      !monthlyData.dealer?.rows ||
       monthlyData.dealer.rows.length === 0 ||
+      !effectiveRetailData.dealer?.rows ||
       effectiveRetailData.dealer.rows.length === 0 ||
       shipmentData.data.rows.length === 0 ||
       purchaseData.data.rows.length === 0
@@ -1444,7 +1464,21 @@ export default function InventoryDashboard() {
       return null;
     }
     if (year === 2026 && brand === '전체') {
-      if (BRANDS_TO_AGGREGATE.some((b) => !monthlyDataByBrand[b] || !retailDataByBrand[b] || !shipmentDataByBrand[b] || !purchaseDataByBrand[b])) {
+      if (
+        BRANDS_TO_AGGREGATE.some((b) => {
+          const m = monthlyDataByBrand[b];
+          const r = retailDataByBrand[b];
+          const s = shipmentDataByBrand[b];
+          const p = purchaseDataByBrand[b];
+          return (
+            !m?.dealer?.rows?.length ||
+            !m?.hq?.rows?.length ||
+            !r?.dealer?.rows?.length ||
+            !s?.data?.rows?.length ||
+            !p?.data?.rows?.length
+          );
+        })
+      ) {
         return null;
       }
       const perBrandTables: TopTablePair[] = BRANDS_TO_AGGREGATE.map((b) => {
@@ -1723,118 +1757,15 @@ export default function InventoryDashboard() {
     return result;
   }, [year, brand, perBrandRetailHqAnnualByKey, retailData]);
 
-  // 2026년 상단 재고자산표 display용: 대리상 Sell-out → 대리상 리테일 연간합계, 본사 본사판매 → 본사 리테일 연간합계
+  // 2026년 상단 재고자산표 display용: 리테일 연간합 오버레이 (공유 파이프라인)
   const topTableDisplayData = useMemo<{ dealer: InventoryTableData; hq: InventoryTableData } | null>(() => {
     if (year !== 2026 || !topTableData) return null;
-
-    const inventoryKeyToRetailKey = (key: string) =>
-      key === '재고자산합계' ? '매출합계' : key;
-
-    const scaleMonthly = (monthly: number[], oldTotal: number, newTotal: number): number[] => {
-      if (oldTotal === 0) return monthly.map(() => Math.round(newTotal / 12));
-      return monthly.map((v) => Math.round(v * (newTotal / oldTotal)));
-    };
-
-    // ACC Sell-in 재계산 대상 키 (Sell-out 교체 후 기말+Sell-out-기초로 역산)
-    const ACC_LEAF_KEYS = new Set(['신발', '모자', '가방', '기타']);
-
-    // 대리상: leaf 행만 수정 후 rebuildTableFromLeafs로 소계 재계산
-    const dealerLeafRows = topTableData.dealer.rows
-      .filter((row) => row.isLeaf)
-      .map((row) => {
-        const retailKey = inventoryKeyToRetailKey(row.key);
-        const newTotalWon = retailDealerAnnualTotalByRowKey?.[retailKey] ?? null;
-
-        let updatedRow = row;
-        if (newTotalWon != null) {
-          const newSellOutK = newTotalWon / 1000;
-          updatedRow = {
-            ...updatedRow,
-            sellOut: scaleMonthly(row.sellOut, row.sellOutTotal, newSellOutK),
-            sellOutTotal: newSellOutK,
-          };
-        }
-
-        if (ACC_LEAF_KEYS.has(row.key)) {
-          // ACC: Sell-in = 기말 + Sell-out - 기초
-          const newSellInTotal = updatedRow.closing + updatedRow.sellOutTotal - updatedRow.opening;
-          updatedRow = {
-            ...updatedRow,
-            sellIn: scaleMonthly(updatedRow.sellIn, updatedRow.sellInTotal, newSellInTotal),
-            sellInTotal: newSellInTotal,
-          };
-        } else {
-          // 의류: 기말재고 = 기초 + Sell-in - Sell-out
-          const newClosing = updatedRow.opening + updatedRow.sellInTotal - updatedRow.sellOutTotal;
-          updatedRow = {
-            ...updatedRow,
-            closing: newClosing,
-            delta: newClosing - updatedRow.opening,
-          };
-        }
-
-        return updatedRow;
-      });
-    const dealerRows = rebuildTableFromLeafs(dealerLeafRows, 366);
-
-    // 대리상 ACC Sell-in 결과를 본사 ACC 대리상출고에 연동하기 위한 Map
-    const dealerAccSellInMap = new Map(
-      dealerLeafRows
-        .filter((row) => ACC_LEAF_KEYS.has(row.key))
-        .map((row) => [row.key, { sellIn: row.sellIn, sellInTotal: row.sellInTotal }])
+    return applyTopTableRetailDisplayOverlay(
+      topTableData,
+      retailDealerAnnualTotalByRowKey,
+      retailHqAnnualTotalByRowKey,
+      366,
     );
-
-    // 본사: leaf 행만 수정 후 rebuildTableFromLeafs로 소계 재계산
-    // - ACC: 대리상출고(sellOut) = dealerLeafRows에서 계산된 ACC Sell-in으로 연동
-    // - 의류: hqSales/hqSalesTotal만 교체 (sellOut 건드리지 않음)
-    const hqLeafRows = topTableData.hq.rows
-      .filter((row) => row.isLeaf)
-      .map((row) => {
-        const retailKey = inventoryKeyToRetailKey(row.key);
-        const newTotalWon = retailHqAnnualTotalByRowKey?.[retailKey] ?? null;
-        const newTotalK = newTotalWon != null ? newTotalWon / 1000 : null;
-        const oldHqTotal = row.hqSalesTotal ?? 0;
-        const newHqSales =
-          newTotalK != null && row.hqSales
-            ? scaleMonthly(row.hqSales, oldHqTotal, newTotalK)
-            : row.hqSales;
-
-        // ACC: 대리상출고(sellOut) = 대리상 ACC Sell-in으로 연동
-        // 기말재고는 topTableData 원래 값 유지 (applyAccTargetWoiOverlay의 목표WOI 기준값)
-        // 상품매입(sellIn) = 기말(유지) + 새 대리상출고 + 본사판매 - 기초 로 재계산
-        if (ACC_LEAF_KEYS.has(row.key)) {
-          const dealerAcc = dealerAccSellInMap.get(row.key);
-          if (dealerAcc) {
-            const newSellOutTotal = dealerAcc.sellInTotal;
-            const newSellOut = scaleMonthly(row.sellOut, row.sellOutTotal, newSellOutTotal);
-            const hqSalesTotal = newTotalK ?? (row.hqSalesTotal ?? 0);
-            const newSellInTotal = Math.max(0, row.closing + newSellOutTotal + hqSalesTotal - row.opening);
-            const newSellIn = scaleMonthly(row.sellIn, row.sellInTotal, newSellInTotal);
-            return {
-              ...row,
-              sellIn: newSellIn,
-              sellInTotal: newSellInTotal,
-              sellOut: newSellOut,
-              sellOutTotal: newSellOutTotal,
-              hqSales: newHqSales,
-              hqSalesTotal: newTotalK ?? row.hqSalesTotal,
-            };
-          }
-        }
-
-        // 의류: hqSales만 교체
-        return {
-          ...row,
-          hqSales: newHqSales,
-          hqSalesTotal: newTotalK ?? row.hqSalesTotal,
-        };
-      });
-    const hqRows = rebuildTableFromLeafs(hqLeafRows, 366);
-
-    return {
-      dealer: { rows: dealerRows },
-      hq: { rows: hqRows },
-    };
   }, [year, topTableData, retailDealerAnnualTotalByRowKey, retailHqAnnualTotalByRowKey]);
 
   const shouldUseTopTableOnly = year === 2025 || year === 2026;
@@ -1874,33 +1805,21 @@ export default function InventoryDashboard() {
     const sData = shipmentDataByBrand[planBrand] ?? null;
     const pData = purchaseDataByBrand[planBrand] ?? null;
     if (!mData || !rData || !sData) return null;
-    const built = buildTableDataFromMonthly(
-      mData,
-      rData,
-      sData,
-      pData ?? undefined,
-      year,
-    );
-    const withWoi = applyAccTargetWoiOverlay(
-      built.dealer,
-      built.hq,
-      rData,
-      accTargetWoiDealer,
-      accTargetWoiHq,
-      accHqHoldingWoi,
-      year,
-    );
     const otbDealerSellIn = otbToDealerSellInPlan(otbData, planBrand);
     const mergedSellOutPlan = {
       ...hqSellOutPlan,
       ...otbDealerSellIn,
     };
-    return applyHqSellInSellOutPlanOverlay(
-      withWoi.dealer,
-      withWoi.hq,
+    return finalize2026InventoryTopTable(
+      mData,
+      rData,
+      sData,
+      pData ?? undefined,
+      accTargetWoiDealer,
+      accTargetWoiHq,
+      accHqHoldingWoi,
       annualPlanToHqSellInPlan(annualShipmentPlan2026, planBrand),
       mergedSellOutPlan,
-      year,
     );
   }, [year, brand, monthlyDataByBrand, monthlyData, retailDataByBrand, retailData, shipmentDataByBrand, shipmentData, purchaseDataByBrand, purchaseData, accTargetWoiDealer, accTargetWoiHq, accHqHoldingWoi, otbData, hqSellOutPlan, annualShipmentPlan2026]);
 
@@ -1924,31 +1843,38 @@ export default function InventoryDashboard() {
             const pData = purchaseDataByBrand[b];
             if (!mData || !sData) return;
 
-            // 시나리오 성장률로 리테일 데이터 fetch
-            const params = new URLSearchParams({
-              year: '2026',
-              brand: b,
-              growthRate: String(def.dealerGrowthRate[b]),
-              growthRateHq: String(def.hqGrowthRate[b]),
-            });
-            const res = await fetch(`/api/inventory/retail-sales?${params}`, { cache: 'no-store' });
-            if (!res.ok) return;
-            const rData = (await res.json()) as RetailSalesResponse;
+            let rData: RetailSalesResponse | null = null;
+            if (scKey === 'base') {
+              rData = retailDataByBrand[b] ?? null;
+            }
+            if (!rData) {
+              const params = new URLSearchParams({
+                year: '2026',
+                brand: b,
+                growthRate: String(def.dealerGrowthRate[b]),
+                growthRateHq: String(def.hqGrowthRate[b]),
+              });
+              const res = await fetch(`/api/inventory/retail-sales?${params}`, { cache: 'no-store' });
+              if (!res.ok) return;
+              const json = (await res.json()) as RetailSalesResponse & { error?: string };
+              if ((json as { error?: string }).error) return;
+              rData = json;
+            }
 
-            const built = buildTableDataFromMonthly(mData, rData, sData, pData ?? undefined, 2026);
-            const withWoi = applyAccTargetWoiOverlay(
-              built.dealer, built.hq, rData,
-              accTargetWoiDealer, accTargetWoiHq, accHqHoldingWoi, 2026,
-            );
             const otbDealerSellIn = otbToDealerSellInPlan(otbData, b);
-            const final = applyHqSellInSellOutPlanOverlay(
-              withWoi.dealer, withWoi.hq,
+            const topPair = finalize2026InventoryTopTable(
+              mData,
+              rData,
+              sData,
+              pData ?? undefined,
+              accTargetWoiDealer,
+              accTargetWoiHq,
+              accHqHoldingWoi,
               annualPlanToHqSellInPlan(annualShipmentPlan2026, b),
               { ...hqSellOutPlan, ...otbDealerSellIn },
-              2026,
             );
-
-            const closing = final.hq.rows.find((r) => r.isTotal)?.closing ?? null;
+            const { dealer: dAnn, hq: hAnn } = retailAnnualTotalsByRowKey(rData);
+            const closing = hqTotalClosingAfterDisplay(topPair, dAnn, hAnn, 366);
             if (closing != null && Number.isFinite(closing)) {
               allClosing[scKey][b] = closing;
             }
@@ -1977,7 +1903,7 @@ export default function InventoryDashboard() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ closing: allClosing, savedAt, version }),
     }).catch(() => {});
-  }, [allBrandsBgLoaded, year, monthlyDataByBrand, shipmentDataByBrand, purchaseDataByBrand,
+  }, [allBrandsBgLoaded, year, monthlyDataByBrand, retailDataByBrand, shipmentDataByBrand, purchaseDataByBrand,
       accTargetWoiDealer, accTargetWoiHq, accHqHoldingWoi, otbData, hqSellOutPlan, annualShipmentPlan2026]);
 
   // 브랜드별 당년 top table (buildBrand2026TopTable 이후에 배치)
@@ -2002,76 +1928,22 @@ export default function InventoryDashboard() {
       retailDataByBrand, retailData, shipmentDataByBrand, shipmentData,
       purchaseDataByBrand, purchaseData]);
 
-  // 브랜드별 2026 display overlay: 하단 리테일 매출표의 연간합계를 상단 재고자산표에 반영
+  // 브랜드별 2026 display overlay (공유 파이프라인)
   const perBrandTopTableDisplayData = useMemo<Partial<Record<AnnualPlanBrand, TopTablePair>>>(() => {
     if (year !== 2026) return {};
-    const inventoryKeyToRetailKey = (key: string) => key === '재고자산합계' ? '매출합계' : key;
-    const scaleMonthly = (monthly: number[], oldTotal: number, newTotal: number): number[] => {
-      if (oldTotal === 0) return monthly.map(() => Math.round(newTotal / 12));
-      return monthly.map((v) => Math.round(v * (newTotal / oldTotal)));
-    };
-    const ACC_LEAF_KEYS = new Set(['신발', '모자', '가방', '기타']);
-
     const result: Partial<Record<AnnualPlanBrand, TopTablePair>> = {};
     for (const b of ANNUAL_PLAN_BRANDS) {
       const topTable = perBrandTopTable[b];
       if (!topTable) continue;
-
       const dealerAnnual = perBrandRetailDealerAnnualByKey[b];
       const hqAnnual = perBrandRetailHqAnnualByKey[b];
       if (!dealerAnnual && !hqAnnual) continue;
-
-      const dealerLeafRows = topTable.dealer.rows
-        .filter((row) => row.isLeaf)
-        .map((row) => {
-          const retailKey = inventoryKeyToRetailKey(row.key);
-          const newTotalWon = dealerAnnual?.[retailKey] ?? null;
-          let updatedRow = row;
-          if (newTotalWon != null) {
-            const newSellOutK = newTotalWon / 1000;
-            updatedRow = { ...updatedRow, sellOut: scaleMonthly(row.sellOut, row.sellOutTotal, newSellOutK), sellOutTotal: newSellOutK };
-          }
-          if (ACC_LEAF_KEYS.has(row.key)) {
-            const newSellInTotal = updatedRow.closing + updatedRow.sellOutTotal - updatedRow.opening;
-            updatedRow = { ...updatedRow, sellIn: scaleMonthly(updatedRow.sellIn, updatedRow.sellInTotal, newSellInTotal), sellInTotal: newSellInTotal };
-          } else {
-            const newClosing = updatedRow.opening + updatedRow.sellInTotal - updatedRow.sellOutTotal;
-            updatedRow = { ...updatedRow, closing: newClosing, delta: newClosing - updatedRow.opening };
-          }
-          return updatedRow;
-        });
-      const dealerRows = rebuildTableFromLeafs(dealerLeafRows, 366);
-
-      const dealerAccSellInMap = new Map(
-        dealerLeafRows.filter((row) => ACC_LEAF_KEYS.has(row.key))
-          .map((row) => [row.key, { sellIn: row.sellIn, sellInTotal: row.sellInTotal }])
+      result[b] = applyTopTableRetailDisplayOverlay(
+        topTable,
+        dealerAnnual ?? null,
+        hqAnnual ?? null,
+        366,
       );
-
-      const hqLeafRows = topTable.hq.rows
-        .filter((row) => row.isLeaf)
-        .map((row) => {
-          const retailKey = inventoryKeyToRetailKey(row.key);
-          const newTotalWon = hqAnnual?.[retailKey] ?? null;
-          const newTotalK = newTotalWon != null ? newTotalWon / 1000 : null;
-          const oldHqTotal = row.hqSalesTotal ?? 0;
-          const newHqSales = newTotalK != null && row.hqSales
-            ? scaleMonthly(row.hqSales, oldHqTotal, newTotalK)
-            : row.hqSales;
-          if (ACC_LEAF_KEYS.has(row.key)) {
-            const dealerAcc = dealerAccSellInMap.get(row.key);
-            if (dealerAcc) {
-              const newSellOutTotal = dealerAcc.sellInTotal;
-              const newSellOut = scaleMonthly(row.sellOut, row.sellOutTotal, newSellOutTotal);
-              const hqSalesTotal = newTotalK ?? (row.hqSalesTotal ?? 0);
-              const newSellInTotal = Math.max(0, row.closing + newSellOutTotal + hqSalesTotal - row.opening);
-              const newSellIn = scaleMonthly(row.sellIn, row.sellInTotal, newSellInTotal);
-              return { ...row, sellIn: newSellIn, sellInTotal: newSellInTotal, sellOut: newSellOut, sellOutTotal: newSellOutTotal, hqSales: newHqSales, hqSalesTotal: newTotalK ?? row.hqSalesTotal };
-            }
-          }
-          return { ...row, hqSales: newHqSales, hqSalesTotal: newTotalK ?? row.hqSalesTotal };
-        });
-      const hqRows = rebuildTableFromLeafs(hqLeafRows, 366);
-      result[b] = { dealer: { rows: dealerRows }, hq: { rows: hqRows } };
     }
     return result;
   }, [year, perBrandTopTable, perBrandRetailDealerAnnualByKey, perBrandRetailHqAnnualByKey]);

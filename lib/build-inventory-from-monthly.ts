@@ -60,12 +60,12 @@ export function buildTableDataFromMonthly(
 ): { dealer: InventoryTableData; hq: InventoryTableData } {
   const yearDays = calcYearDays(year);
 
-  const dealerMonthly = byKey(monthlyData.dealer.rows);
-  const hqMonthly = byKey(monthlyData.hq.rows);
-  const dealerRetail = byKey(retailData.dealer.rows);
-  const hqRetail = byKey(retailData.hq.rows);
-  const shipment = byKey(shipmentData.data.rows);
-  const purchase = purchaseData ? byKey(purchaseData.data.rows) : null;
+  const dealerMonthly = byKey(monthlyData.dealer?.rows ?? []);
+  const hqMonthly = byKey(monthlyData.hq?.rows ?? []);
+  const dealerRetail = byKey(retailData.dealer?.rows ?? []);
+  const hqRetail = byKey(retailData.hq?.rows ?? []);
+  const shipment = byKey(shipmentData.data?.rows ?? []);
+  const purchase = purchaseData ? byKey(purchaseData.data?.rows ?? []) : null;
 
   const dealerRaw: InventoryRowRaw[] = [];
   const hqRaw: InventoryRowRaw[] = [];

@@ -1,21 +1,21 @@
 {
   "closing": {
     "negative": {
-      "MLB": 2794648,
-      "DISCOVERY": 372500.30814,
-      "MLB KIDS": 175709.5941
+      "MLB": 2728715,
+      "DISCOVERY": 361230.99604,
+      "MLB KIDS": 175963.2562
     },
     "base": {
-      "MLB": 2791568,
-      "DISCOVERY": 372500.30814,
-      "MLB KIDS": 170343.06118
+      "MLB": 2722336,
+      "MLB KIDS": 170602.70564,
+      "DISCOVERY": 361230.99604
     },
     "positive": {
-      "MLB": 2804784,
-      "DISCOVERY": 357816.5921,
-      "MLB KIDS": 166416.34475
+      "MLB": 2732256,
+      "MLB KIDS": 166696.91865,
+      "DISCOVERY": 346194.9129
     }
   },
-  "savedAt": "2026-04-02T09:06:31.507Z",
+  "savedAt": "2026-04-02T14:01:40.756Z",
   "version": "negative:d0,-5,280-h4,0,137|base:d5,-3,280-h15,8,137|positive:d10,5,330-h20,15,200"
 }

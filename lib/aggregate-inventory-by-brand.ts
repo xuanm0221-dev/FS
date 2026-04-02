@@ -64,8 +64,8 @@ export function aggregateMonthlyStock(responses: MonthlyStockResponse[]): Monthl
   return {
     ...first,
     brand: '전체',
-    dealer: { rows: aggregateMonthlyRows(responses.map((r) => r.dealer.rows)) },
-    hq: { rows: aggregateMonthlyRows(responses.map((r) => r.hq.rows)) },
+    dealer: { rows: aggregateMonthlyRows(responses.map((r) => r.dealer?.rows ?? [])) },
+    hq: { rows: aggregateMonthlyRows(responses.map((r) => r.hq?.rows ?? [])) },
   };
 }
 
@@ -83,14 +83,14 @@ export function aggregateRetailSales(responses: RetailSalesResponse[]): RetailSa
   const result: RetailSalesResponse = {
     ...first,
     brand: '전체',
-    dealer: { rows: aggregateRetailRows(responses.map((r) => r.dealer.rows)) },
-    hq: { rows: aggregateRetailRows(responses.map((r) => r.hq.rows)) },
+    dealer: { rows: aggregateRetailRows(responses.map((r) => r.dealer?.rows ?? [])) },
+    hq: { rows: aggregateRetailRows(responses.map((r) => r.hq?.rows ?? [])) },
   };
   const retail2025List = responses.map((r) => r.retail2025).filter(Boolean) as { dealer: RetailSalesTableData; hq: RetailSalesTableData }[];
   if (retail2025List.length > 0) {
     result.retail2025 = {
-      dealer: { rows: aggregateRetailRows(retail2025List.map((r) => r.dealer.rows)) },
-      hq: { rows: aggregateRetailRows(retail2025List.map((r) => r.hq.rows)) },
+      dealer: { rows: aggregateRetailRows(retail2025List.map((r) => r.dealer?.rows ?? [])) },
+      hq: { rows: aggregateRetailRows(retail2025List.map((r) => r.hq?.rows ?? [])) },
     };
   }
   return result;
@@ -109,7 +109,7 @@ export function aggregateShipmentSales(responses: ShipmentSalesResponse[]): Ship
   return {
     ...first,
     brand: '전체',
-    data: { rows: aggregateRetailRows(responses.map((r) => r.data.rows)) },
+    data: { rows: aggregateRetailRows(responses.map((r) => r.data?.rows ?? [])) },
   };
 }
 
@@ -126,7 +126,7 @@ export function aggregatePurchase(responses: PurchaseResponse[]): PurchaseRespon
   return {
     ...first,
     brand: '전체',
-    data: { rows: aggregateRetailRows(responses.map((r) => r.data.rows)) },
+    data: { rows: aggregateRetailRows(responses.map((r) => r.data?.rows ?? [])) },
   };
 }
 

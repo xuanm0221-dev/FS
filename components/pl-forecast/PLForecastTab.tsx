@@ -594,6 +594,7 @@ export default function PLForecastTab() {
   const [scenarioExpandedScenarios, setScenarioExpandedScenarios] = useState<Set<ScenarioKey>>(new Set());
   const [scenarioViewMode, setScenarioViewMode] = useState<'summary' | 'full'>('summary');
   const [wcInvBrandOpen, setWcInvBrandOpen] = useState(false);
+  const [wcLegendOpen, setWcLegendOpen] = useState(false);
 
   // 시나리오 운전자본표 데이터
   const [scenarioWcData, setScenarioWcData] = useState<{
@@ -2048,19 +2049,11 @@ export default function PLForecastTab() {
         scenarioRetail[scKey][brand] = monthly;
       }
 
-      // 대리상 ACC OTB를 시나리오별로 스케일링 (기존계획 기준으로 조정)
-      const computeAccOtb = (scKey: ScenarioKey): Record<SalesBrand, number> => {
-        const result: Record<SalesBrand, number> = { MLB: 0, 'MLB KIDS': 0, DISCOVERY: 0 };
-        for (const brand of SALES_BRANDS) {
-          const baseFactor = 1 + SCENARIO_DEFS.base.dealerGrowthRate[brand] / 100;
-          const scFactor = 1 + SCENARIO_DEFS[scKey].dealerGrowthRate[brand] / 100;
-          result[brand] = baseFactor > 0 ? dealerAccOtbByBrand[brand] * (scFactor / baseFactor) : dealerAccOtbByBrand[brand];
-        }
-        return result;
-      };
+      // 대리상 ACC 연간: PL(sim) 메인·재고자산(sim)과 동일하게 dealerAccOtbByBrand 사용.
+      // (시나리오별 base 대비 OTB 스케일은 제거 — 재고 쪽은 기초·기말·리테일로 Sell-in이 맞춰지는 로직이 기준이며, PL 그리드와 불일치를 유발함)
 
       // PL 파이프라인 재계산 (순수 함수 - 현재 컴포넌트 state 사용)
-      const computeOnePL = (scDirectRetail: Record<SalesBrand, (number | null)[]>, scAccOtb: Record<SalesBrand, number>): ScenarioResult => {
+      const computeOnePL = (scDirectRetail: Record<SalesBrand, (number | null)[]>): ScenarioResult => {
         const be = () => new Array(12).fill(null) as (number | null)[];
         const latestSupportCutoff = salesSupportActualAvailableMonths.length === 0 ? 0 : Math.max(...salesSupportActualAvailableMonths);
         const latestBrandActual = brandActualAvailableMonths.length === 0 ? 0 : Math.max(...brandActualAvailableMonths);
@@ -2080,7 +2073,7 @@ export default function PLForecastTab() {
               monthly = dealerSeasonMonthlyByBrand[row.brand].차기시즌;
             } else if (row.leafKind === 'dealerAcc') {
               const brand = row.brand;
-              const annualOtb = scAccOtb[brand];
+              const annualOtb = dealerAccOtbByBrand[brand];
               const actualSeries = salesSupportActualByBrand[brand]?.ACC ?? be();
               let actualSum = 0;
               for (let i = 0; i < latestSupportCutoff; i++) actualSum += actualSeries[i] ?? 0;
@@ -2279,9 +2272,9 @@ export default function PLForecastTab() {
       };
 
       const allData: AllScenarioData = {
-        base: computeOnePL(scenarioRetail.base, computeAccOtb('base')),
-        positive: computeOnePL(scenarioRetail.positive, computeAccOtb('positive')),
-        negative: computeOnePL(scenarioRetail.negative, computeAccOtb('negative')),
+        base: computeOnePL(scenarioRetail.base),
+        positive: computeOnePL(scenarioRetail.positive),
+        negative: computeOnePL(scenarioRetail.negative),
       };
 
       setScenarioData(allData);
@@ -3286,8 +3279,10 @@ export default function PLForecastTab() {
                 const fmtK = (v: number | null) =>
                   v === null ? '-' : Math.round(v).toLocaleString();
                 const fmtYoyWc = (val: number | null, base: number | null) => {
-                  if (val === null || base === null || base === 0) return '-';
-                  return `${((val / base) * 100).toFixed(1)}%`;
+                  if (val === null || base === null) return '-';
+                  const diff = Math.round(val - base);
+                  const body = diff.toLocaleString();
+                  return diff > 0 ? `+${body}` : body;
                 };
                 return (
                   <Fragment>
@@ -3403,7 +3398,7 @@ export default function PLForecastTab() {
                             {/* 계정과목 (계층 토글) */}
                             <td
                               className={`sticky left-0 z-10 border-b border-r border-slate-200 py-2 ${bgClass} ${isBoldRow ? 'font-semibold text-slate-800' : 'font-normal text-slate-700'}`}
-                              style={{ paddingLeft: `${(row.level - 1) * 14 + 10}px`, paddingRight: '10px' }}
+                              style={{ paddingLeft: `${16 + row.level * 18}px`, paddingRight: '10px' }}
                             >
                               {row.isGroup ? (
                                 <button
@@ -3492,8 +3487,8 @@ export default function PLForecastTab() {
                     </tbody>
                   </table>
 
-                  {/* 운전자본표 (요약 모드 + 법인 전체 기준) */}
-                  {scenarioViewMode === 'summary' && (() => {
+                  {/* 운전자본표: 법인 전체 · 요약/전체 PL 전환과 무관하게 항상 표시 */}
+                  {(() => {
                     const wc = scenarioWcData;
                     const WC_ROWS: { key: keyof ScenarioWcRow; label: string; isGroup: boolean; isBrand?: SalesBrand }[] = [
                       { key: 'total', label: '운전자본합계', isGroup: true },
@@ -3506,7 +3501,7 @@ export default function PLForecastTab() {
                     ];
                     return (
                       <div className="mt-6">
-                        <div className="mb-2 flex items-center gap-2">
+                        <div className="mb-2 flex flex-wrap items-center gap-2">
                           <span className="text-xs font-bold text-slate-700">운전자본표</span>
                           <span className="text-[10px] text-slate-400">법인 전체 · 단위: K CNY</span>
                           {wc?.invDataMissing && (
@@ -3531,8 +3526,8 @@ export default function PLForecastTab() {
                                     <th className="min-w-[90px] border-b border-b-slate-300 border-r border-r-slate-200 px-2 py-2.5 text-center font-bold" style={{ background: def.bgColor, color: def.color }}>
                                       {def.label}
                                     </th>
-                                    <th className="min-w-[68px] border-b border-b-slate-300 border-r-2 border-r-slate-400 px-2 py-2.5 text-center font-medium last:border-r-0" style={{ background: def.bgColor, color: def.color }}>
-                                      YOY
+                                    <th className="min-w-[80px] border-b border-b-slate-300 border-r-2 border-r-slate-400 px-2 py-2.5 text-center font-medium last:border-r-0" style={{ background: def.bgColor, color: def.color }}>
+                                      전년대비
                                     </th>
                                   </Fragment>
                                 );
@@ -3606,6 +3601,63 @@ export default function PLForecastTab() {
                             })}
                           </tbody>
                         </table>
+                        <div className="mt-3 border-t border-slate-200 pt-2">
+                          <button
+                            type="button"
+                            onClick={() => setWcLegendOpen((v) => !v)}
+                            className="flex w-full items-center gap-2 rounded-md py-1.5 text-left text-[11px] font-semibold text-slate-700 hover:bg-slate-50"
+                          >
+                            <span className="inline-flex w-4 shrink-0 justify-center text-[10px] text-slate-500 tabular-nums">
+                              {wcLegendOpen ? '▼' : '▶'}
+                            </span>
+                            <span>계산 로직 범례 (부정 / 기존계획 / 긍정)</span>
+                          </button>
+                          {wcLegendOpen && (
+                            <div className="mt-2 space-y-2.5 rounded-lg border border-slate-200 bg-slate-50/95 px-3 py-2.5 text-[11px] leading-snug text-slate-700">
+                              <div>
+                                <span className="font-semibold text-slate-800">매출채권 · 매입채무 (성장률 → 매출 규모 → 동일 비율 스케일)</span>
+                                <ul className="mt-0.5 list-disc space-y-0.5 pl-4 text-slate-600">
+                                  <li>
+                                    기준 K: <span className="font-mono text-[10px]">GET /api/pl-forecast/wc-forecast</span>의 법인{' '}
+                                    <span className="font-mono text-[10px]">wc_ar</span> · <span className="font-mono text-[10px]">wc_ap</span>(원) 각각 ÷ 1,000. 매입채무는 CSV 부호를 그대로 둠.
+                                  </li>
+                                  <li>
+                                    부정·기존계획·긍정마다 시나리오 정의의 <span className="font-medium">브랜드별 대리상·직영 성장률</span>로{' '}
+                                    <span className="font-mono text-[10px]">/api/inventory/retail-sales</span> → PL 재계산 → 법인{' '}
+                                    <span className="font-medium">salesActual.total</span> 12개월 합 × 1.13 = 해당 시나리오의 실판매출(V+) 연간 규모{' '}
+                                    <span className="font-mono text-[10px]">V+_sc</span>.
+                                  </li>
+                                  <li>
+                                    <span className="font-medium">기존계획</span>의 <span className="font-mono text-[10px]">V+_기존</span>을 분모로, AR·AP 모두 같은 배율만 적용:{' '}
+                                    <span className="font-mono text-[10px]">값_sc = 값_기준K × (V+_sc ÷ V+_기존)</span>.{' '}
+                                    <span className="font-mono text-[10px]">V+_기존 = 0</span>이면 스케일 생략. 기존계획 열은 배율 1이라 기준 K와 동일.
+                                  </li>
+                                </ul>
+                              </div>
+                              <div>
+                                <span className="font-semibold text-slate-800">재고자산</span>
+                                <ul className="mt-0.5 list-disc space-y-0.5 pl-4 text-slate-600">
+                                  <li>
+                                    브랜드별 TAG(K): <span className="font-mono text-[10px]">GET /api/inventory/scenario-inventory</span>의{' '}
+                                    <span className="font-mono text-[10px]">closing[시나리오][브랜드]</span>(재고자산(sim) 재계산·저장). 미저장 시 재고 행은 비움.
+                                  </li>
+                                  <li>
+                                    브랜드 원가 재고 K: <span className="font-mono text-[10px]">(TAG_K ÷ 1.13) × Tag대비원가율 × (1 − 평가감율)</span>. Tag대비원가율은{' '}
+                                    <span className="font-mono text-[10px]">localStorage pl_tag_cost_ratio_annual</span>, 평가감율은 CF(sim)과 동일(MLB·KIDS·DISCOVERY 고정율).
+                                  </li>
+                                  <li>법인 재고 합계: 세 브랜드 <span className="font-mono text-[10px]">costK</span> 합.</li>
+                                </ul>
+                              </div>
+                              <div>
+                                <span className="font-semibold text-slate-800">운전자본합계 · 전년대비</span>
+                                <ul className="mt-0.5 list-disc space-y-0.5 pl-4 text-slate-600">
+                                  <li>합계: 매출채권 + 재고자산(원가) + 매입채무(기준값 부호 그대로 합산).</li>
+                                  <li>전년대비: 2025 실적(K) 대비 해당 시나리오 금액(K)의 차이(정수, 소수 없음). 양수는 + 표기.</li>
+                                </ul>
+                              </div>
+                            </div>
+                          )}
+                        </div>
                       </div>
                     );
                   })()}

@@ -1459,15 +1459,8 @@ export default function InventoryDashboard() {
     };
 
     loadDependentPlanValues(false);
-    const intervalId = window.setInterval(() => loadDependentPlanValues(true), 15000);
-    const handleFocus = () => {
-      loadDependentPlanValues(true);
-    };
-    window.addEventListener('focus', handleFocus);
     return () => {
       mounted = false;
-      window.clearInterval(intervalId);
-      window.removeEventListener('focus', handleFocus);
     };
   }, [year]);
 

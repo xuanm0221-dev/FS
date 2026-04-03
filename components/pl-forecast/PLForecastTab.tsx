@@ -92,6 +92,13 @@ const INVENTORY_GROWTH_PARAMS_KEY = 'inventory_growth_params';
 const PL_TAG_COST_RATIO_KEY = 'pl_tag_cost_ratio_annual';
 /** 시나리오 모달 「현금 & 차입금」표 기초잔액 (K CNY, 원 ÷ 1000 반올림) */
 const SCENARIO_CASH_DEBT_OPENING_K = { cash: 139543, debt: 909685 } as const;
+/** 운영 현금 목표 구간(K) — 부정·긍정 기말 현금에 따른 차입·상환 밴드 */
+const SCENARIO_CASH_BAND_LOW_K = 100_000;
+const SCENARIO_CASH_BAND_HIGH_K = 120_000;
+/** 시나리오 표: 연간↔YOY, YOY↔기존계획대비 사이 세로선(얇게) */
+const SCENARIO_COL_DIVIDER_THIN_R = '[border-right:1px_dashed_#cbd5e1]';
+/** 시나리오 블록 끝(다음 시나리오 열 앞) — 1px 유지 */
+const SCENARIO_COL_DIVIDER_BLK_R = 'border-r border-r-slate-200';
 
 const ACCOUNT_LABEL_OVERRIDES: Record<string, string> = {
   Tag매출_대리상: '대리상',
@@ -161,20 +168,26 @@ function wcVsBaseDeltaK(
 }
 
 /**
- * CF 연간(values[13], 원) + WC 기존계획대비(K)×1000 → 부정·긍정 매출수금·물품대 그룹 행
+ * CF 연간(values[13], 원) + WC 기존계획대비(K)×1000 → 부정·긍정 물품대.
+ * 매출수금은 위에 더해 법인 영업이익(시나리오−기존계획) K×1000 원.
  */
 function cfWcLinkedPlanYuan(
   row: CFHierarchyApiRow,
   scKey: ScenarioKey,
   plan26: number | null,
   wc: ScenarioWcDataForCf | null,
+  scenarioData: AllScenarioData | null,
 ): number | null {
   if (scKey === 'base' || plan26 == null || !Number.isFinite(plan26)) return null;
   if (row.대분류 !== '영업활동' || !row.isGroup || row.level !== 1) return null;
   if (row.account === '매출수금') {
     const d = wcVsBaseDeltaK(wc, scKey, 'ar');
     if (d == null) return null;
-    return plan26 + d * 1000;
+    let yuan = plan26 + d * 1000;
+    const oiK = corpOperatingProfitVsBaseDeltaK(scKey, scenarioData);
+    if (oiK === null) return null;
+    yuan += oiK * 1000;
+    return yuan;
   }
   if (row.account === '물품대') {
     const d = wcVsBaseDeltaK(wc, scKey, 'ap');
@@ -191,12 +204,13 @@ function cfPlan26Yuan(r: CFHierarchyApiRow): number | null {
 
 /**
  * 부정·긍정 영업활동 합계(원) = 표와 동일 규칙으로 네 그룹 행만 합산
- * (매출수금·물품대 WC연동 연간 + 본사선급금·비용 기존계획 연간)
+ * (매출수금: WC+법인영업이익 연동 연간, 물품대: WC 연간, 본사선급금·비용: 기존계획 연간)
  */
 function cfOperatingActivityScenarioYuan(
   rows: CFHierarchyApiRow[] | null,
   wc: ScenarioWcDataForCf | null,
   scKey: ScenarioKey,
+  scenarioData: AllScenarioData | null,
 ): number | null {
   if (!rows?.length || scKey === 'base') return null;
   const rSales = rows.find(
@@ -217,8 +231,8 @@ function cfOperatingActivityScenarioYuan(
   const pA = cfPlan26Yuan(rAdv);
   const pE = cfPlan26Yuan(rExp);
   if (pS == null || pG == null || pA == null || pE == null) return null;
-  const adjS = cfWcLinkedPlanYuan(rSales, scKey, pS, wc);
-  const adjG = cfWcLinkedPlanYuan(rGoods, scKey, pG, wc);
+  const adjS = cfWcLinkedPlanYuan(rSales, scKey, pS, wc, scenarioData);
+  const adjG = cfWcLinkedPlanYuan(rGoods, scKey, pG, wc, scenarioData);
   if (adjS == null || adjG == null) return null;
   return adjS + adjG + pA + pE;
 }
@@ -230,9 +244,10 @@ function cfNetCashScenarioYuan(
   rows: CFHierarchyApiRow[] | null,
   wc: ScenarioWcDataForCf | null,
   scKey: ScenarioKey,
+  scenarioData: AllScenarioData | null,
 ): number | null {
   if (!rows?.length || scKey === 'base') return null;
-  const op = cfOperatingActivityScenarioYuan(rows, wc, scKey);
+  const op = cfOperatingActivityScenarioYuan(rows, wc, scKey, scenarioData);
   if (op == null) return null;
   const rCapex = rows.find((r) => r.account === '자산성지출' && r.level === 0 && r.isGroup);
   const rOther = rows.find((r) => r.account === '기타수익' && r.level === 0);
@@ -243,6 +258,48 @@ function cfNetCashScenarioYuan(
   const pB = cfPlan26Yuan(rBorrow);
   if (pC == null || pO == null || pB == null) return null;
   return op + pC + pO + pB;
+}
+
+/**
+ * 시나리오 모달 현금·차입 기말(K): (1) 기존계획 기말현금 + net cash 시나리오−기존(원)→K,
+ * (2) [100k,120k] 밴드로 차입·상환, (3) 상한 초과분 상환은 min(기존계획 차입잔액K, 초과차이K), 나머지는 현금 잔류.
+ */
+function scenarioCashBorrowClosingK(
+  cashPlanBaseK: number | null,
+  debtPlanBaseK: number | null,
+  ncBaseYuan: number | null,
+  ncScYuan: number | null,
+): { cash: number; debt: number } | null {
+  if (
+    cashPlanBaseK === null ||
+    debtPlanBaseK === null ||
+    ncBaseYuan === null ||
+    ncScYuan === null
+  ) {
+    return null;
+  }
+  if (
+    !Number.isFinite(cashPlanBaseK) ||
+    !Number.isFinite(debtPlanBaseK) ||
+    !Number.isFinite(ncBaseYuan) ||
+    !Number.isFinite(ncScYuan)
+  ) {
+    return null;
+  }
+  const cashStep1K = cashPlanBaseK + Math.round((ncScYuan - ncBaseYuan) / 1000);
+  let borrowDeltaK = 0;
+  let repayActualK = 0;
+  if (cashStep1K < SCENARIO_CASH_BAND_LOW_K) {
+    borrowDeltaK = SCENARIO_CASH_BAND_LOW_K - cashStep1K;
+  } else if (cashStep1K > SCENARIO_CASH_BAND_HIGH_K) {
+    const excessAboveBandK = cashStep1K - SCENARIO_CASH_BAND_HIGH_K;
+    const debtBalanceK = Math.max(0, debtPlanBaseK);
+    // 상환할 현금(초과분)이 차입잔액보다 크면 차입잔액만 상환, 초과분은 현금에 잔류
+    repayActualK = Math.min(debtBalanceK, excessAboveBandK);
+  }
+  const cashFinalK = cashStep1K + borrowDeltaK - repayActualK;
+  const debtFinalK = debtPlanBaseK + borrowDeltaK - repayActualK;
+  return { cash: cashFinalK, debt: debtFinalK };
 }
 
 /** PL 시나리오 모달: 해당 시나리오 연간 − 기존계획 연간. number는 K(원÷1000), percent는 YOY와 동일 %p */
@@ -451,6 +508,20 @@ function sumOrNull(values: (number | null)[]): number | null {
   const hasAny = values.some((v) => v !== null);
   if (!hasAny) return null;
   return values.reduce<number>((sum, v) => sum + (v ?? 0), 0);
+}
+
+function corpOperatingProfitAnnual26Yuan(result: ScenarioResult): number | null {
+  const series = result.corporate.calculated.monthly['영업이익'];
+  return sumOrNull(series ?? []);
+}
+
+/** 부정·긍정: 법인 영업이익(FY26 월합 원) 시나리오−기존계획을 K 정수로 */
+function corpOperatingProfitVsBaseDeltaK(scKey: ScenarioKey, scenarioData: AllScenarioData | null): number | null {
+  if (!scenarioData || scKey === 'base') return null;
+  const oiSc = corpOperatingProfitAnnual26Yuan(scenarioData[scKey]);
+  const oiBase = corpOperatingProfitAnnual26Yuan(scenarioData.base);
+  if (oiSc == null || oiBase == null) return null;
+  return Math.round((oiSc - oiBase) / 1000);
 }
 
 function makeMonthlyArray(calc: (idx: number) => number | null): (number | null)[] {
@@ -3547,18 +3618,32 @@ export default function PLForecastTab() {
                   const body = diff.toLocaleString();
                   return diff > 0 ? `+${body}` : body;
                 };
+                const netCashRowCbd = scenarioCfRows?.find((r) => r.account === 'net cash') ?? null;
+                const ncBaseYuanCbd = netCashRowCbd ? cfPlan26Yuan(netCashRowCbd) : null;
+                const scenarioCbdClosingK: Partial<Record<ScenarioKey, { cash: number; debt: number }>> = {};
+                for (const sk of SCENARIO_ORDER) {
+                  if (sk === 'base') continue;
+                  const ncSc = cfNetCashScenarioYuan(scenarioCfRows, scenarioWcData, sk, scenarioData);
+                  const pair = scenarioCashBorrowClosingK(
+                    scenarioCashBorrowPlanK?.cash ?? null,
+                    scenarioCashBorrowPlanK?.debt ?? null,
+                    ncBaseYuanCbd,
+                    ncSc,
+                  );
+                  if (pair) scenarioCbdClosingK[sk] = pair;
+                }
                 return (
                   <Fragment>
-                  <table className="w-full border-separate border-spacing-0 text-xs">
+                  <table className="w-full border border-slate-200 border-separate border-spacing-0 text-xs">
                     {/* ── 헤더 ── */}
                     <thead className="sticky top-0 z-20">
                       <tr>
                         {/* 계정과목 */}
-                        <th className="sticky left-0 z-30 min-w-[200px] border-b border-r border-slate-300 bg-gradient-to-r from-[#2f4f7f] to-[#3b5f93] px-3 py-2.5 text-center font-semibold text-white">
+                        <th className="sticky left-0 z-30 min-w-[200px] border-b border-r border-slate-200 bg-gradient-to-r from-[#2f4f7f] to-[#3b5f93] px-3 py-2.5 text-center font-semibold text-white">
                           손익계산서
                         </th>
                         {/* 2025 실적 — 운전자본·현금흐름과 동일 min-w */}
-                        <th className="min-w-[88px] border-b border-b-slate-300 border-r-2 border-r-slate-400 bg-slate-700 px-3 py-2.5 text-center font-semibold text-slate-100">
+                        <th className="min-w-[88px] border-b border-b-slate-200 border-r border-r-slate-200 bg-slate-700 px-3 py-2.5 text-center font-semibold text-slate-100">
                           2025실적
                         </th>
                         {/* 시나리오별 헤더 */}
@@ -3580,7 +3665,7 @@ export default function PLForecastTab() {
                                 ))}
                                 {/* 연간 + 토글 */}
                                 <th
-                                  className="min-w-[88px] border-b border-b-slate-300 border-r border-r-slate-200 px-2 py-2.5 text-center font-bold"
+                                  className={`min-w-[88px] border-b border-b-slate-200 px-2 py-2.5 text-center font-bold ${SCENARIO_COL_DIVIDER_THIN_R}`}
                                   style={{ background: def.bgColor, color: def.color }}
                                 >
                                   <button
@@ -3600,14 +3685,14 @@ export default function PLForecastTab() {
                                 </th>
                                 {/* YOY */}
                                 <th
-                                  className={`min-w-[76px] border-b border-b-slate-300 px-2 py-2.5 text-center font-medium last:border-r-0 ${showVsBasePl ? 'border-r border-r-slate-200' : 'border-r-2 border-r-slate-400'}`}
+                                  className={`min-w-[76px] border-b border-b-slate-200 px-2 py-2.5 text-center font-medium ${showVsBasePl ? SCENARIO_COL_DIVIDER_THIN_R : SCENARIO_COL_DIVIDER_BLK_R}`}
                                   style={{ background: def.bgColor, color: def.color }}
                                 >
                                   YOY
                                 </th>
                                 {showVsBasePl && (
                                   <th
-                                    className="min-w-[76px] border-b border-b-slate-300 border-r-2 border-r-slate-400 px-2 py-2.5 text-center font-medium"
+                                    className={`min-w-[76px] border-b border-b-slate-200 px-2 py-2.5 text-center font-medium ${SCENARIO_COL_DIVIDER_BLK_R}`}
                                     style={{ background: def.bgColor, color: def.color }}
                                   >
                                     기존계획대비
@@ -3620,7 +3705,7 @@ export default function PLForecastTab() {
                             <Fragment key={scKey}>
                               {/* 연간 + 토글 */}
                               <th
-                                className="min-w-[88px] border-b border-b-slate-300 border-r border-r-slate-200 px-2 py-2.5 text-center font-bold"
+                                className={`min-w-[88px] border-b border-b-slate-200 px-2 py-2.5 text-center font-bold ${SCENARIO_COL_DIVIDER_THIN_R}`}
                                 style={{ background: def.bgColor, color: def.color }}
                               >
                                 <button
@@ -3636,14 +3721,14 @@ export default function PLForecastTab() {
                               </th>
                               {/* YOY */}
                               <th
-                                className={`min-w-[76px] border-b border-b-slate-300 px-2 py-2.5 text-center font-medium last:border-r-0 ${showVsBasePl ? 'border-r border-r-slate-200' : 'border-r-2 border-r-slate-400'}`}
+                                className={`min-w-[76px] border-b border-b-slate-200 px-2 py-2.5 text-center font-medium ${showVsBasePl ? SCENARIO_COL_DIVIDER_THIN_R : SCENARIO_COL_DIVIDER_BLK_R}`}
                                 style={{ background: def.bgColor, color: def.color }}
                               >
                                 YOY
                               </th>
                               {showVsBasePl && (
                                 <th
-                                  className="min-w-[76px] border-b border-b-slate-300 border-r-2 border-r-slate-400 px-2 py-2.5 text-center font-medium"
+                                  className={`min-w-[76px] border-b border-b-slate-200 px-2 py-2.5 text-center font-medium ${SCENARIO_COL_DIVIDER_BLK_R}`}
                                   style={{ background: def.bgColor, color: def.color }}
                                 >
                                   기존계획대비
@@ -3703,7 +3788,7 @@ export default function PLForecastTab() {
                             </td>
 
                             {/* 2025 실적 */}
-                            <td className="border-b border-b-slate-200 border-r-2 border-r-slate-300 px-3 py-2 text-right text-slate-500">
+                            <td className="border-b border-b-slate-200 border-r border-r-slate-200 px-3 py-2 text-right text-slate-500">
                               {formatValue(annual2025, row.format)}
                             </td>
 
@@ -3730,21 +3815,21 @@ export default function PLForecastTab() {
                                     ))}
                                     {/* 연간 */}
                                     <td
-                                      className={`border-b border-b-slate-200 border-r border-r-slate-100 px-2 py-2 text-right ${isBoldRow ? 'font-semibold' : 'font-medium'}`}
+                                      className={`border-b border-b-slate-200 px-2 py-2 text-right ${SCENARIO_COL_DIVIDER_THIN_R} ${isBoldRow ? 'font-semibold' : 'font-medium'}`}
                                       style={{ color: def.color, background: def.bgColor }}
                                     >
                                       {formatValue(annual26, row.format)}
                                     </td>
                                     {/* YOY */}
                                     <td
-                                      className={`border-b border-b-slate-200 px-2 py-2 text-right font-medium last:border-r-0 ${showVsBasePl ? 'border-r border-r-slate-200' : 'border-r-2 border-r-slate-300'}`}
+                                      className={`border-b border-b-slate-200 px-2 py-2 text-right font-medium ${showVsBasePl ? SCENARIO_COL_DIVIDER_THIN_R : SCENARIO_COL_DIVIDER_BLK_R}`}
                                       style={{ color: def.color, background: def.bgColor }}
                                     >
                                       {yoyStr}
                                     </td>
                                     {showVsBasePl && (
                                       <td
-                                        className="border-b border-b-slate-200 border-r-2 border-r-slate-300 px-2 py-2 text-right text-slate-500"
+                                        className={`border-b border-b-slate-200 px-2 py-2 text-right text-slate-500 ${SCENARIO_COL_DIVIDER_BLK_R}`}
                                         style={{ background: def.bgColor }}
                                       >
                                         {vsBaseStr}
@@ -3758,19 +3843,21 @@ export default function PLForecastTab() {
                                 <Fragment key={scKey}>
                                   {/* 연간 */}
                                   <td
-                                    className={`border-b border-b-slate-200 border-r border-r-slate-100 px-3 py-2 text-right ${isBoldRow ? 'font-semibold' : 'font-medium'}`}
+                                    className={`border-b border-b-slate-200 px-3 py-2 text-right ${SCENARIO_COL_DIVIDER_THIN_R} ${isBoldRow ? 'font-semibold' : 'font-medium'}`}
                                     style={{ color: def.color }}
                                   >
                                     {formatValue(annual26, row.format)}
                                   </td>
                                   {/* YOY */}
                                   <td
-                                    className={`border-b border-b-slate-200 px-3 py-2 text-right text-slate-500 last:border-r-0 ${showVsBasePl ? 'border-r border-r-slate-200' : 'border-r-2 border-r-slate-300'}`}
+                                    className={`border-b border-b-slate-200 px-3 py-2 text-right text-slate-500 ${showVsBasePl ? SCENARIO_COL_DIVIDER_THIN_R : SCENARIO_COL_DIVIDER_BLK_R}`}
                                   >
                                     {yoyStr}
                                   </td>
                                   {showVsBasePl && (
-                                    <td className="border-b border-b-slate-200 border-r-2 border-r-slate-300 px-3 py-2 text-right text-slate-500">
+                                    <td
+                                      className={`border-b border-b-slate-200 px-3 py-2 text-right text-slate-500 ${SCENARIO_COL_DIVIDER_BLK_R}`}
+                                    >
                                       {vsBaseStr}
                                     </td>
                                   )}
@@ -3810,13 +3897,13 @@ export default function PLForecastTab() {
                             </span>
                           </div>
                         )}
-                        <table className="w-full border-separate border-spacing-0 text-xs">
+                        <table className="w-full border border-slate-200 border-separate border-spacing-0 text-xs">
                           <thead className="sticky top-0 z-20">
                             <tr>
-                              <th className="sticky left-0 z-30 min-w-[200px] border-b border-r border-slate-300 bg-gradient-to-r from-[#2f4f7f] to-[#3b5f93] px-3 py-2.5 text-center font-semibold text-white">
+                              <th className="sticky left-0 z-30 min-w-[200px] border-b border-r border-slate-200 bg-gradient-to-r from-[#2f4f7f] to-[#3b5f93] px-3 py-2.5 text-center font-semibold text-white">
                                 운전자본표
                               </th>
-                              <th className="min-w-[88px] border-b border-b-slate-300 border-r-2 border-r-slate-400 bg-slate-700 px-3 py-2.5 text-center font-semibold text-slate-100">
+                              <th className="min-w-[88px] border-b border-b-slate-200 border-r border-r-slate-200 bg-slate-700 px-3 py-2.5 text-center font-semibold text-slate-100">
                                 2025실적
                               </th>
                               {SCENARIO_ORDER.map((scKey) => {
@@ -3824,18 +3911,21 @@ export default function PLForecastTab() {
                                 const isBase = scKey === 'base';
                                 return (
                                   <Fragment key={scKey}>
-                                    <th className="min-w-[88px] border-b border-b-slate-300 border-r border-r-slate-200 px-2 py-2.5 text-center font-bold" style={{ background: def.bgColor, color: def.color }}>
+                                    <th
+                                      className={`min-w-[88px] border-b border-b-slate-200 px-2 py-2.5 text-center font-bold ${SCENARIO_COL_DIVIDER_THIN_R}`}
+                                      style={{ background: def.bgColor, color: def.color }}
+                                    >
                                       {def.label}
                                     </th>
                                     <th
-                                      className={`min-w-[76px] border-b border-b-slate-300 px-2 py-2.5 text-center font-medium ${isBase ? 'border-r-2 border-r-slate-400' : 'border-r border-r-slate-200'}`}
+                                      className={`min-w-[76px] border-b border-b-slate-200 px-2 py-2.5 text-center font-medium ${!isBase ? SCENARIO_COL_DIVIDER_THIN_R : SCENARIO_COL_DIVIDER_BLK_R}`}
                                       style={{ background: def.bgColor, color: def.color }}
                                     >
                                       전년대비
                                     </th>
                                     {!isBase && (
                                       <th
-                                        className="min-w-[76px] border-b border-b-slate-300 border-r-2 border-r-slate-400 px-2 py-2.5 text-center font-medium"
+                                        className={`min-w-[76px] border-b border-b-slate-200 px-2 py-2.5 text-center font-medium ${scKey === 'positive' ? 'border-r-0' : SCENARIO_COL_DIVIDER_BLK_R}`}
                                         style={{ background: def.bgColor, color: def.color }}
                                       >
                                         기존계획대비
@@ -3875,12 +3965,11 @@ export default function PLForecastTab() {
                                       </button>
                                     ) : row.label}
                                   </td>
-                                  <td className={`border-b border-b-slate-200 border-r-2 border-r-slate-300 px-3 py-2 text-right text-slate-500 ${isBrandRow ? 'text-[11px]' : ''}`}>
+                                  <td className={`border-b border-b-slate-200 border-r border-r-slate-200 px-3 py-2 text-right text-slate-500 ${isBrandRow ? 'text-[11px]' : ''}`}>
                                     {fmtK(actual25)}
                                   </td>
                                   {SCENARIO_ORDER.map((scKey) => {
                                     const def = SCENARIO_DEFS[scKey];
-                                    const isBase = scKey === 'base';
                                     let val: number | null = null;
                                     let basePlanK: number | null = null;
                                     let tooltipText: string | undefined;
@@ -3901,19 +3990,21 @@ export default function PLForecastTab() {
                                     return (
                                       <Fragment key={scKey}>
                                         <td
-                                          className={`border-b border-b-slate-200 border-r border-r-slate-100 px-3 py-2 text-right ${row.isGroup ? 'font-semibold' : isBrandRow ? 'text-[11px] text-slate-500' : 'font-medium'}`}
+                                          className={`border-b border-b-slate-200 px-3 py-2 text-right ${SCENARIO_COL_DIVIDER_THIN_R} ${row.isGroup ? 'font-semibold' : isBrandRow ? 'text-[11px] text-slate-500' : 'font-medium'}`}
                                           style={!isBrandRow ? { color: def.color } : undefined}
                                           title={tooltipText}
                                         >
                                           {fmtK(val)}
                                         </td>
                                         <td
-                                          className={`border-b border-b-slate-200 px-3 py-2 text-right text-slate-500 text-[11px] ${isBase ? 'border-r-2 border-r-slate-300' : 'border-r border-r-slate-100'}`}
+                                          className={`border-b border-b-slate-200 px-3 py-2 text-right text-slate-500 text-[11px] ${scKey !== 'base' ? SCENARIO_COL_DIVIDER_THIN_R : SCENARIO_COL_DIVIDER_BLK_R}`}
                                         >
                                           {fmtYoyWc(val, actual25)}
                                         </td>
-                                        {!isBase && (
-                                          <td className="border-b border-b-slate-200 border-r-2 border-r-slate-300 px-3 py-2 text-right text-slate-500 text-[11px]">
+                                        {scKey !== 'base' && (
+                                          <td
+                                            className={`border-b border-b-slate-200 px-3 py-2 text-right text-slate-500 text-[11px] ${scKey === 'positive' ? 'border-r-0' : SCENARIO_COL_DIVIDER_BLK_R}`}
+                                          >
                                             {fmtYoyWc(val, basePlanK)}
                                           </td>
                                         )}
@@ -3995,16 +4086,16 @@ export default function PLForecastTab() {
                   {/* 현금흐름표 (연간만 · 메인 계층/토글과 동일) */}
                   <div>
                     {scenarioCfError && !scenarioCfRows?.length ? (
-                      <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] text-amber-800">{scenarioCfError}</div>
+                      <div className="rounded-none border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] text-amber-800">{scenarioCfError}</div>
                     ) : !scenarioCfRows?.length ? (
-                      <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-[11px] text-slate-500">현금흐름표를 불러오는 중…</div>
+                      <div className="rounded-none border border-slate-200 bg-slate-50 px-3 py-2 text-[11px] text-slate-500">현금흐름표를 불러오는 중…</div>
                     ) : (
                       <>
-                        <div className="overflow-x-auto rounded-lg border border-slate-200">
-                          <table className="w-full border-separate border-spacing-0 text-xs">
+                        <div className="overflow-x-auto rounded-none">
+                          <table className="w-full border border-slate-200 border-separate border-spacing-0 text-xs">
                             <thead className="sticky top-0 z-20">
                               <tr>
-                                <th className="sticky left-0 z-30 min-w-[200px] border-b border-r border-slate-300 bg-gradient-to-r from-[#2f4f7f] to-[#3b5f93] px-3 py-2.5 text-left font-semibold text-white">
+                                <th className="sticky left-0 z-30 min-w-[200px] border-b border-r border-slate-200 bg-gradient-to-r from-[#2f4f7f] to-[#3b5f93] px-3 py-2.5 text-left font-semibold text-white">
                                   <div className="flex min-w-0 items-center justify-between gap-2">
                                     <span className="min-w-0 truncate">현금흐름표</span>
                                     <button
@@ -4030,7 +4121,7 @@ export default function PLForecastTab() {
                                     </button>
                                   </div>
                                 </th>
-                                <th className="min-w-[88px] border-b border-b-slate-300 border-r-2 border-r-slate-400 bg-slate-700 px-3 py-2.5 text-center font-semibold text-slate-100">
+                                <th className="min-w-[88px] border-b border-b-slate-200 border-r border-r-slate-200 bg-slate-700 px-3 py-2.5 text-center font-semibold text-slate-100">
                                   2025년 실적
                                 </th>
                                 {SCENARIO_ORDER.map((scKey) => {
@@ -4039,20 +4130,20 @@ export default function PLForecastTab() {
                                   return (
                                     <Fragment key={`cf-hdr-${scKey}`}>
                                       <th
-                                        className="min-w-[88px] border-b border-b-slate-300 border-r border-r-slate-200 px-2 py-2.5 text-center font-bold"
+                                        className={`min-w-[88px] border-b border-b-slate-200 px-2 py-2.5 text-center font-bold ${SCENARIO_COL_DIVIDER_THIN_R}`}
                                         style={{ background: def.bgColor, color: def.color }}
                                       >
                                         {def.label}
                                       </th>
                                       <th
-                                        className={`min-w-[76px] border-b border-b-slate-300 px-2 py-2.5 text-center font-medium ${isBase ? 'border-r-2 border-r-slate-400' : 'border-r border-r-slate-200'}`}
+                                        className={`min-w-[76px] border-b border-b-slate-200 px-2 py-2.5 text-center font-medium ${!isBase ? SCENARIO_COL_DIVIDER_THIN_R : SCENARIO_COL_DIVIDER_BLK_R}`}
                                         style={{ background: def.bgColor, color: def.color }}
                                       >
                                         전년대비
                                       </th>
                                       {!isBase && (
                                         <th
-                                          className="min-w-[76px] border-b border-b-slate-300 border-r-2 border-r-slate-400 px-2 py-2.5 text-center font-medium"
+                                          className={`min-w-[76px] border-b border-b-slate-200 px-2 py-2.5 text-center font-medium ${scKey === 'positive' ? 'border-r-0' : SCENARIO_COL_DIVIDER_BLK_R}`}
                                           style={{ background: def.bgColor, color: def.color }}
                                         >
                                           기존계획대비
@@ -4067,18 +4158,13 @@ export default function PLForecastTab() {
                               {scenarioCfVisibleRows.map((row, ri) => {
                                 const isNetCash = row.account === 'net cash';
                                 const isMajor = row.level === 0 && !isNetCash;
-                                const isMedium = row.level === 1;
                                 const indentPx = row.level === 0 ? 12 : row.level === 1 ? 36 : 60;
                                 const v = row.values ?? [];
                                 const actual25 = Number.isFinite(v[0]) ? v[0] : null;
                                 const plan26 = Number.isFinite(v[13]) ? v[13] : null;
-                                const rowBg = isNetCash
-                                  ? 'bg-gray-100'
-                                  : isMajor || isMedium
-                                    ? 'bg-gray-50'
-                                    : 'bg-white';
+                                const rowBg = isNetCash ? 'bg-gray-100' : 'bg-white';
                                 const tdSticky = `sticky left-0 z-10 border-b border-r border-slate-200 py-2 px-3 ${rowBg}`;
-                                const tdNum = `border-b border-r border-slate-200 py-2 px-2 text-right tabular-nums ${rowBg}`;
+                                const cfTdNumCore = `border-b border-b-slate-200 py-2 px-2 text-right tabular-nums ${rowBg}`;
                                 return (
                                   <tr key={`cf-sc-${ri}-${row.account}`}>
                                     <td className={tdSticky} style={{ paddingLeft: `${indentPx}px` }}>
@@ -4104,7 +4190,9 @@ export default function PLForecastTab() {
                                         <span className={isNetCash ? 'font-semibold text-slate-800' : 'text-slate-800'}>{row.account}</span>
                                       )}
                                     </td>
-                                    <td className={`${tdNum} ${actual25 != null && actual25 < 0 ? 'text-red-600' : 'text-slate-700'}`}>
+                                    <td
+                                      className={`${cfTdNumCore} border-r border-r-slate-200 ${actual25 != null && actual25 < 0 ? 'text-red-600' : 'text-slate-700'}`}
+                                    >
                                       {actual25 != null ? formatScenarioCfAmount(actual25) : '-'}
                                     </td>
                                     {SCENARIO_ORDER.map((scKey) => {
@@ -4112,10 +4200,12 @@ export default function PLForecastTab() {
                                       if (isBase) {
                                         return (
                                           <Fragment key={`cf-sc-${row.account}-${scKey}`}>
-                                            <td className={`${tdNum} ${plan26 != null && plan26 < 0 ? 'text-red-600' : 'text-slate-700'}`}>
+                                            <td
+                                              className={`${cfTdNumCore} ${SCENARIO_COL_DIVIDER_THIN_R} ${plan26 != null && plan26 < 0 ? 'text-red-600' : 'text-slate-700'}`}
+                                            >
                                               {plan26 != null ? formatScenarioCfAmount(plan26) : '-'}
                                             </td>
-                                            <td className={`${tdNum} text-slate-600 border-r-2 border-r-slate-400`}>
+                                            <td className={`${cfTdNumCore} ${SCENARIO_COL_DIVIDER_BLK_R} text-slate-600`}>
                                               {formatScenarioCfYoyDiff(plan26, actual25)}
                                             </td>
                                           </Fragment>
@@ -4124,13 +4214,17 @@ export default function PLForecastTab() {
                                       if (scenarioCfRowMirrorsBasePlan(row)) {
                                         return (
                                           <Fragment key={`cf-sc-${row.account}-${scKey}`}>
-                                            <td className={`${tdNum} ${plan26 != null && plan26 < 0 ? 'text-red-600' : 'text-slate-700'}`}>
+                                            <td
+                                              className={`${cfTdNumCore} ${SCENARIO_COL_DIVIDER_THIN_R} ${plan26 != null && plan26 < 0 ? 'text-red-600' : 'text-slate-700'}`}
+                                            >
                                               {plan26 != null ? formatScenarioCfAmount(plan26) : '-'}
                                             </td>
-                                            <td className={`${tdNum} text-slate-600 border-r border-r-slate-200`}>
+                                            <td className={`${cfTdNumCore} ${SCENARIO_COL_DIVIDER_THIN_R} text-slate-600`}>
                                               {formatScenarioCfYoyDiff(plan26, actual25)}
                                             </td>
-                                            <td className={`${tdNum} text-slate-600 border-r-2 border-r-slate-400`}>
+                                            <td
+                                              className={`${cfTdNumCore} text-slate-600 ${scKey === 'positive' ? 'border-r-0' : SCENARIO_COL_DIVIDER_BLK_R}`}
+                                            >
                                               {formatScenarioCfVsBase(plan26, plan26)}
                                             </td>
                                           </Fragment>
@@ -4146,19 +4240,22 @@ export default function PLForecastTab() {
                                           scenarioCfRows,
                                           scenarioWcData,
                                           scKey,
+                                          scenarioData,
                                         );
                                         if (opSum != null) {
                                           return (
                                             <Fragment key={`cf-sc-${row.account}-${scKey}`}>
                                               <td
-                                                className={`${tdNum} ${opSum < 0 ? 'text-red-600' : 'text-slate-700'}`}
+                                                className={`${cfTdNumCore} ${SCENARIO_COL_DIVIDER_THIN_R} ${opSum < 0 ? 'text-red-600' : 'text-slate-700'}`}
                                               >
                                                 {formatScenarioCfAmount(opSum)}
                                               </td>
-                                              <td className={`${tdNum} text-slate-600 border-r border-r-slate-200`}>
+                                              <td className={`${cfTdNumCore} ${SCENARIO_COL_DIVIDER_THIN_R} text-slate-600`}>
                                                 {formatScenarioCfYoyDiff(opSum, actual25)}
                                               </td>
-                                              <td className={`${tdNum} text-slate-600 border-r-2 border-r-slate-400`}>
+                                              <td
+                                                className={`${cfTdNumCore} text-slate-600 ${scKey === 'positive' ? 'border-r-0' : SCENARIO_COL_DIVIDER_BLK_R}`}
+                                              >
                                                 {plan26 != null
                                                   ? formatScenarioCfVsBase(opSum, plan26)
                                                   : '-'}
@@ -4175,19 +4272,22 @@ export default function PLForecastTab() {
                                           scenarioCfRows,
                                           scenarioWcData,
                                           scKey,
+                                          scenarioData,
                                         );
                                         if (ncSum != null) {
                                           return (
                                             <Fragment key={`cf-sc-${row.account}-${scKey}`}>
                                               <td
-                                                className={`${tdNum} ${ncSum < 0 ? 'text-red-600' : 'text-slate-700'}`}
+                                                className={`${cfTdNumCore} ${SCENARIO_COL_DIVIDER_THIN_R} ${ncSum < 0 ? 'text-red-600' : 'text-slate-700'}`}
                                               >
                                                 {formatScenarioCfAmount(ncSum)}
                                               </td>
-                                              <td className={`${tdNum} text-slate-600 border-r border-r-slate-200`}>
+                                              <td className={`${cfTdNumCore} ${SCENARIO_COL_DIVIDER_THIN_R} text-slate-600`}>
                                                 {formatScenarioCfYoyDiff(ncSum, actual25)}
                                               </td>
-                                              <td className={`${tdNum} text-slate-600 border-r-2 border-r-slate-400`}>
+                                              <td
+                                                className={`${cfTdNumCore} text-slate-600 ${scKey === 'positive' ? 'border-r-0' : SCENARIO_COL_DIVIDER_BLK_R}`}
+                                              >
                                                 {plan26 != null
                                                   ? formatScenarioCfVsBase(ncSum, plan26)
                                                   : '-'}
@@ -4198,18 +4298,22 @@ export default function PLForecastTab() {
                                       }
                                       const cfWcAdj =
                                         scKey === 'negative' || scKey === 'positive'
-                                          ? cfWcLinkedPlanYuan(row, scKey, plan26, scenarioWcData)
+                                          ? cfWcLinkedPlanYuan(row, scKey, plan26, scenarioWcData, scenarioData)
                                           : null;
                                       if (cfWcAdj != null) {
                                         return (
                                           <Fragment key={`cf-sc-${row.account}-${scKey}`}>
-                                            <td className={`${tdNum} ${cfWcAdj < 0 ? 'text-red-600' : 'text-slate-700'}`}>
+                                            <td
+                                              className={`${cfTdNumCore} ${SCENARIO_COL_DIVIDER_THIN_R} ${cfWcAdj < 0 ? 'text-red-600' : 'text-slate-700'}`}
+                                            >
                                               {formatScenarioCfAmount(cfWcAdj)}
                                             </td>
-                                            <td className={`${tdNum} text-slate-600 border-r border-r-slate-200`}>
+                                            <td className={`${cfTdNumCore} ${SCENARIO_COL_DIVIDER_THIN_R} text-slate-600`}>
                                               {formatScenarioCfYoyDiff(cfWcAdj, actual25)}
                                             </td>
-                                            <td className={`${tdNum} text-slate-600 border-r-2 border-r-slate-400`}>
+                                            <td
+                                              className={`${cfTdNumCore} text-slate-600 ${scKey === 'positive' ? 'border-r-0' : SCENARIO_COL_DIVIDER_BLK_R}`}
+                                            >
                                               {plan26 != null ? formatScenarioCfVsBase(cfWcAdj, plan26) : '-'}
                                             </td>
                                           </Fragment>
@@ -4217,9 +4321,11 @@ export default function PLForecastTab() {
                                       }
                                       return (
                                         <Fragment key={`cf-sc-${row.account}-${scKey}`}>
-                                          <td className={`${tdNum} text-slate-400`}>-</td>
-                                          <td className={`${tdNum} text-slate-400 border-r border-r-slate-200`}>-</td>
-                                          <td className={`${tdNum} text-slate-600 border-r-2 border-r-slate-400`}>
+                                          <td className={`${cfTdNumCore} ${SCENARIO_COL_DIVIDER_THIN_R} text-slate-400`}>-</td>
+                                          <td className={`${cfTdNumCore} ${SCENARIO_COL_DIVIDER_THIN_R} text-slate-400`}>-</td>
+                                          <td
+                                            className={`${cfTdNumCore} text-slate-600 ${scKey === 'positive' ? 'border-r-0' : SCENARIO_COL_DIVIDER_BLK_R}`}
+                                          >
                                             {formatScenarioCfVsBase(null, plan26)}
                                           </td>
                                         </Fragment>
@@ -4243,7 +4349,7 @@ export default function PLForecastTab() {
                             <span>데이터 출처 · 열 정의</span>
                           </button>
                           {scenarioCfLegendOpen && (
-                            <div className="mt-2 space-y-2 rounded-lg border border-slate-200 bg-slate-50/95 px-3 py-2.5 text-[11px] leading-snug text-slate-700">
+                            <div className="mt-2 space-y-2 rounded-none border border-slate-200 bg-slate-50/95 px-3 py-2.5 text-[11px] leading-snug text-slate-700">
                               <p className="text-slate-600">
                                 <span className="font-semibold text-slate-800">표 요약:</span> 연간 합계 · 단위 K CNY · 계층은 메인 탭 현금흐름과 동일.
                               </p>
@@ -4273,11 +4379,11 @@ export default function PLForecastTab() {
                                   <span className="font-medium">PL 미연동 행</span>(부정·긍정): 자산성지출(합계·하위), 기타수익, 차입금, 영업활동의 비용(합계·하위)·본사선급금은 기존계획 열과 동일 금액·전년대비로 채우며 기존계획대비는 <span className="font-mono text-[10px]">0</span>.
                                 </li>
                                 <li>
-                                  <span className="font-medium">운전자본 연동</span>(부정·긍정): 영업활동의 <span className="font-medium">매출수금</span>·<span className="font-medium">물품대</span> 그룹 행만, 연간 = 기존계획(<span className="font-mono text-[10px]">values[13]</span>) + 운전자본표 매출채권·매입채무의 기존계획대비(K)×1,000원. 시나리오는 운전자본만 구분한다는 전제. 하위 행(브랜드·본사 등)은 미연동.
+                                  <span className="font-medium">운전자본·PL 연동</span>(부정·긍정): 영업활동의 <span className="font-medium">매출수금</span>·<span className="font-medium">물품대</span> 그룹 행만. <span className="font-medium">매출수금</span> 연간 = 기존계획(<span className="font-mono text-[10px]">values[13]</span>) + 운전자본표 매출채권 기존계획대비(K)×1,000원 + <span className="font-medium">법인 영업이익</span> 기존계획대비(K)×1,000원(시나리오 PL 월별 영업이익 합 − 기존계획 합을 K로 반올림 후 ×1,000). <span className="font-medium">물품대</span>는 매입채무 기존계획대비(K)×1,000만 가산. 하위 행은 미연동.
                                 </li>
                                 <li>
                                   <span className="font-medium">영업활동</span> 합계(부정·긍정): 위 표에서 쓰는 값과 동일하게{' '}
-                                  <span className="font-medium">매출수금·물품대·본사선급금·비용</span> 네 그룹(또는 본사선급금 단일) 행의 연간을 합산(매출수금·물품대는 WC연동 연간, 본사선급금·비용은 기존계획 연간). 운전자본 미로드 시 네 값을 못 맞추면 <span className="font-mono text-[10px]">-</span>.
+                                  <span className="font-medium">매출수금·물품대·본사선급금·비용</span> 네 그룹 행의 연간을 합산(매출수금은 WC+법인영업이익 연동, 물품대는 WC만, 본사선급금·비용은 기존계획 연간). 운전자본·PL을 맞출 수 없으면 <span className="font-mono text-[10px]">-</span>.
                                 </li>
                                 <li>
                                   <span className="font-medium">net cash</span>(부정·긍정):{' '}
@@ -4292,13 +4398,13 @@ export default function PLForecastTab() {
                   </div>
 
                   <div className="mt-6">
-                    <table className="w-full border-separate border-spacing-0 text-xs">
+                    <table className="w-full border border-slate-200 border-separate border-spacing-0 text-xs">
                       <thead className="sticky top-0 z-20">
                         <tr>
-                          <th className="sticky left-0 z-30 min-w-[200px] border-b border-r border-slate-300 bg-gradient-to-r from-[#2f4f7f] to-[#3b5f93] px-3 py-2.5 text-center font-semibold text-white">
+                          <th className="sticky left-0 z-30 min-w-[200px] border-b border-r border-slate-200 bg-gradient-to-r from-[#2f4f7f] to-[#3b5f93] px-3 py-2.5 text-center font-semibold text-white">
                             현금 &amp; 차입금
                           </th>
-                          <th className="min-w-[88px] border-b border-b-slate-300 border-r-2 border-r-slate-400 bg-slate-700 px-3 py-2.5 text-center font-semibold text-slate-100">
+                          <th className="min-w-[88px] border-b border-b-slate-200 border-r border-r-slate-200 bg-slate-700 px-3 py-2.5 text-center font-semibold text-slate-100">
                             기초잔액
                           </th>
                           {SCENARIO_ORDER.map((scKey) => {
@@ -4307,20 +4413,20 @@ export default function PLForecastTab() {
                             return (
                               <Fragment key={`cbd-hdr-${scKey}`}>
                                 <th
-                                  className="min-w-[88px] border-b border-b-slate-300 border-r border-r-slate-200 px-2 py-2.5 text-center font-bold"
+                                  className={`min-w-[88px] border-b border-b-slate-200 px-2 py-2.5 text-center font-bold ${SCENARIO_COL_DIVIDER_THIN_R}`}
                                   style={{ background: def.bgColor, color: def.color }}
                                 >
                                   {def.label}
                                 </th>
                                 <th
-                                  className={`min-w-[76px] border-b border-b-slate-300 px-2 py-2.5 text-center font-medium ${isBase ? 'border-r-2 border-r-slate-400' : 'border-r border-r-slate-200'}`}
+                                  className={`min-w-[76px] border-b border-b-slate-200 px-2 py-2.5 text-center font-medium ${!isBase ? SCENARIO_COL_DIVIDER_THIN_R : SCENARIO_COL_DIVIDER_BLK_R}`}
                                   style={{ background: def.bgColor, color: def.color }}
                                 >
                                   전년대비
                                 </th>
                                 {!isBase && (
                                   <th
-                                    className="min-w-[76px] border-b border-b-slate-300 border-r-2 border-r-slate-400 px-2 py-2.5 text-center font-medium"
+                                    className={`min-w-[76px] border-b border-b-slate-200 px-2 py-2.5 text-center font-medium ${scKey === 'positive' ? 'border-r-0' : SCENARIO_COL_DIVIDER_BLK_R}`}
                                     style={{ background: def.bgColor, color: def.color }}
                                   >
                                     기존계획대비
@@ -4350,29 +4456,34 @@ export default function PLForecastTab() {
                             <td className="sticky left-0 z-10 border-b border-r border-slate-200 bg-white py-2 pl-[10px] pr-[10px] text-slate-700">
                               {row.label}
                             </td>
-                            <td className="border-b border-b-slate-200 border-r-2 border-r-slate-300 px-3 py-2 text-right text-slate-500">
+                            <td className="border-b border-b-slate-200 border-r border-r-slate-200 px-3 py-2 text-right text-slate-500">
                               {fmtK(row.openingK)}
                             </td>
                             {SCENARIO_ORDER.map((scKey) => {
                               const def = SCENARIO_DEFS[scKey];
                               const isBase = scKey === 'base';
                               const planK = row.planK;
-                              const scenarioVal: number | null = isBase ? planK : null;
+                              const cbdKind = row.label === '현금잔액' ? 'cash' : 'debt';
+                              const scenarioVal: number | null = isBase
+                                ? planK
+                                : scenarioCbdClosingK[scKey]?.[cbdKind] ?? null;
                               return (
                                 <Fragment key={`${row.label}-${scKey}`}>
                                   <td
-                                    className="border-b border-b-slate-200 border-r border-r-slate-100 px-3 py-2 text-right font-medium"
+                                    className={`border-b border-b-slate-200 px-3 py-2 text-right font-medium ${SCENARIO_COL_DIVIDER_THIN_R}`}
                                     style={{ color: def.color }}
                                   >
                                     {fmtK(scenarioVal)}
                                   </td>
                                   <td
-                                    className={`border-b border-b-slate-200 px-3 py-2 text-right text-slate-500 text-[11px] ${isBase ? 'border-r-2 border-r-slate-300' : 'border-r border-r-slate-100'}`}
+                                    className={`border-b border-b-slate-200 px-3 py-2 text-right text-slate-500 text-[11px] ${!isBase ? SCENARIO_COL_DIVIDER_THIN_R : SCENARIO_COL_DIVIDER_BLK_R}`}
                                   >
                                     {fmtYoyWc(scenarioVal, row.openingK)}
                                   </td>
                                   {!isBase && (
-                                    <td className="border-b border-b-slate-200 border-r-2 border-r-slate-300 px-3 py-2 text-right text-slate-500 text-[11px]">
+                                    <td
+                                      className={`border-b border-b-slate-200 px-3 py-2 text-right text-slate-500 text-[11px] ${scKey === 'positive' ? 'border-r-0' : SCENARIO_COL_DIVIDER_BLK_R}`}
+                                    >
                                       {fmtYoyWc(scenarioVal, planK)}
                                     </td>
                                   )}
@@ -4383,10 +4494,23 @@ export default function PLForecastTab() {
                         ))}
                       </tbody>
                     </table>
-                    <p className="mt-2 text-[10px] text-slate-500">
-                      법인 전체 · 단위: K CNY · 기존계획 기말잔액은{' '}
-                      <span className="font-mono text-[10px]">GET /api/fs/cash-borrowing?year=2026</span> 시리즈 기말(인덱스 13)
-                    </p>
+                    <div className="mt-2 space-y-1.5 text-[10px] text-slate-500">
+                      <p>
+                        법인 전체 · 단위: K CNY · 기존계획 기말잔액은{' '}
+                        <span className="font-mono text-[10px]">GET /api/fs/cash-borrowing?year=2026</span> 시리즈 기말(인덱스 13)
+                      </p>
+                      <p className="leading-snug">
+                        <span className="font-semibold text-slate-600">부정·긍정 기말(현금·차입)</span>: (1) 잠정현금K = 기존계획 기말현금K + 위 현금흐름표{' '}
+                        <span className="font-medium">net cash</span>의 시나리오−기존계획(원)을 ÷1000 반올림한 K. (2) 목표구간{' '}
+                        {SCENARIO_CASH_BAND_LOW_K.toLocaleString()}K~{SCENARIO_CASH_BAND_HIGH_K.toLocaleString()}K — 잠정현금이 하한 미만이면 그만큼{' '}
+                        <span className="font-medium">차입 증가</span>, 상한 초과분(잠정현금 − 상한)은 상환 후보이나{' '}
+                        <span className="font-medium">실제상환K = min(기존계획 차입잔액K, 그 초과분)</span>
+                        (차입보다 많이 갚을 수 없음, 나머지는 현금 잔류). (3){' '}
+                        <span className="font-medium">기말현금K</span> = 잠정현금 + 차입증가 − 실제상환,{' '}
+                        <span className="font-medium">기말차입K</span> = 기존계획 차입 + 차입증가 − 실제상환. net cash를 산출할 수 없으면{' '}
+                        <span className="font-mono">-</span>.
+                      </p>
+                    </div>
                   </div>
                   </Fragment>
                 );

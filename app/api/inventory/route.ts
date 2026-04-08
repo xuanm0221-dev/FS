@@ -3,6 +3,8 @@ import { Brand, InventoryApiResponse, InventoryParams } from '@/lib/inventory-ty
 import { MOCK_DATA } from '@/lib/inventory-mock';
 import { buildTableData, applyTargetWOI, applyTargetWOIForHq } from '@/lib/inventory-calc';
 
+export const dynamic = 'force-dynamic';
+
 export async function GET(request: NextRequest) {
   const { searchParams } = request.nextUrl;
   const year = parseInt(searchParams.get('year') ?? '2025', 10);

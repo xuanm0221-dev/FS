@@ -4,6 +4,7 @@ import path from 'path';
 import Papa from 'papaparse';
 
 export const runtime = 'nodejs';
+export const dynamic = 'force-dynamic';
 
 type SalesBrand = 'MLB' | 'MLB KIDS' | 'DISCOVERY';
 type SalesSupportKey = '당년S' | '당년F' | '1년차' | '차기시즌' | 'ACC';

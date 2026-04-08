@@ -3,6 +3,7 @@ import { fetchOtbData, OtbData, OtbSeason, OtbBrand } from '@/lib/otb-db';
 import { readOtbStore, writeOtbStore } from '@/lib/inventory-file-store';
 
 export const runtime = 'nodejs';
+export const dynamic = 'force-dynamic';
 
 export interface OtbResponse {
   year: number;

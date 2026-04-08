@@ -5,6 +5,8 @@ import { RetailSalesResponse, RetailSalesRow } from '@/lib/retail-sales-types';
 import { mergePlanMonths } from '@/lib/retail-plan';
 import { get2025Cache, set2025Cache } from '@/lib/inventory-2025-cache';
 
+export const dynamic = 'force-dynamic';
+
 /** YYMM 문자열 생성 (예: year=2025, month=1 → '202501') */
 function toYYMM(year: number, month: number): string {
   return `${year}${String(month).padStart(2, '0')}`;

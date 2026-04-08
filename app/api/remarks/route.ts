@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { kv } from '@vercel/kv';
 
+export const dynamic = 'force-dynamic';
+
 // 비고 조회
 export async function GET(request: NextRequest) {
   try {

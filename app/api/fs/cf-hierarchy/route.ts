@@ -3,6 +3,8 @@ import path from 'path';
 import fs from 'fs';
 import { readCFHierarchyCSV, CFHierarchyRow, readCFPlanData } from '@/lib/csv';
 
+export const dynamic = 'force-dynamic';
+
 type YearData = Map<string, { total: number; months: number[] }>;
 
 function rowKey(대분류: string, 중분류: string, 소분류: string): string {

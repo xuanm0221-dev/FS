@@ -4,6 +4,8 @@ import { fetchPurchaseSales } from '@/lib/purchase-db';
 import { RetailSalesTableData, RetailSalesRow } from '@/lib/retail-sales-types';
 import { get2025Cache, set2025Cache } from '@/lib/inventory-2025-cache';
 
+export const dynamic = 'force-dynamic';
+
 export interface PurchaseResponse {
   year: number;
   brand: string;

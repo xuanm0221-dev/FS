@@ -3,6 +3,8 @@ import { CLOSED_THROUGH, fetchMonthlyStock } from '@/lib/inventory-db';
 import { MonthlyStockResponse, MonthlyStockRow } from '@/lib/inventory-monthly-types';
 import { get2025Cache, set2025Cache } from '@/lib/inventory-2025-cache';
 
+export const dynamic = 'force-dynamic';
+
 function toYYMM(year: number, month: number): string {
   return `${year}${String(month).padStart(2, '0')}`;
 }

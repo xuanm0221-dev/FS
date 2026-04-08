@@ -4,6 +4,8 @@ import { readCSV, readBSPlanData } from '@/lib/csv';
 import { calculateBS, calculateComparisonDataBS, calculateWorkingCapital } from '@/lib/fs-mapping';
 import { TableRow, FinancialData } from '@/lib/types';
 
+export const dynamic = 'force-dynamic';
+
 // 운전자본 비고 자동 생성 함수
 function generateWCRemarks(
   currentBSData: TableRow[], 

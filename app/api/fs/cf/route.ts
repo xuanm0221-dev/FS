@@ -3,6 +3,8 @@ import path from 'path';
 import { readCFCSV } from '@/lib/csv';
 import { calculateCF } from '@/lib/fs-mapping';
 
+export const dynamic = 'force-dynamic';
+
 export async function GET(request: NextRequest) {
   try {
     const searchParams = request.nextUrl.searchParams;

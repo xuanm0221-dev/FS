@@ -4,6 +4,8 @@ import { readCSV } from '@/lib/csv';
 import { calculatePL, calculateComparisonData, calculateBrandBreakdown } from '@/lib/fs-mapping';
 import { TableRow } from '@/lib/types';
 
+export const dynamic = 'force-dynamic';
+
 const VALID_BRANDS = ['mlb', 'kids', 'discovery', 'duvetica', 'supra'];
 
 export async function GET(request: NextRequest) {

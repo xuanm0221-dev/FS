@@ -4,6 +4,8 @@ import { CFExplanationContent } from '@/lib/types';
 import { getCFExplanationSummaryNumbers } from '@/lib/cf-explanation-data';
 import { generateCFExplanationContent } from '@/lib/cf-explanation-generator';
 
+export const dynamic = 'force-dynamic';
+
 export type { CFExplanationContent };
 
 export async function GET(request: NextRequest) {

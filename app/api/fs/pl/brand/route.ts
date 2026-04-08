@@ -3,6 +3,8 @@ import path from 'path';
 import { readCSV } from '@/lib/csv';
 import { calculatePL, calculateComparisonData } from '@/lib/fs-mapping';
 
+export const dynamic = 'force-dynamic';
+
 const VALID_BRANDS = ['mlb', 'kids', 'discovery', 'duvetica', 'supra'];
 
 export async function GET(request: NextRequest) {

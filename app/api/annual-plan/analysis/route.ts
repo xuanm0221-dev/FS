@@ -4,6 +4,8 @@ import fs from 'fs/promises';
 import { generateCashFlowInsights } from '@/lib/analysis';
 import { EditableAnalysis } from '@/lib/types';
 
+export const dynamic = 'force-dynamic';
+
 // 분석 데이터 저장 경로
 const ANALYSIS_FILE_PATH = path.join(process.cwd(), '파일', 'analysis.json');
 

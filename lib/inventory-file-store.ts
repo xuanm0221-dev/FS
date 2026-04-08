@@ -1,5 +1,14 @@
 import { promises as fs } from 'fs';
 import path from 'path';
+import {
+  DEFAULT_HQ_ACC_BUDGET,
+  HQ_ACC_BUDGET_BRANDS,
+  normalizeHqAccBudgetEntry,
+  type HqAccBudgetEntry,
+} from './inventory-hq-acc-budget';
+
+export type { HqAccBudgetEntry } from './inventory-hq-acc-budget';
+export { DEFAULT_HQ_ACC_BUDGET, normalizeHqAccBudgetEntry } from './inventory-hq-acc-budget';
 
 type JsonValue = null | boolean | number | string | JsonValue[] | { [key: string]: JsonValue };
 
@@ -8,6 +17,7 @@ const SNAPSHOT_FILE = path.join(DATA_DIR, 'snapshots.json');
 const ANNUAL_PLAN_FILE = path.join(DATA_DIR, 'annual-shipment-plan.json');
 const OTB_PLAN_FILE = path.join(DATA_DIR, 'otb-plan.json');
 const DEALER_ACC_SELLIN_FILE = path.join(DATA_DIR, 'dealer-acc-sellin.json');
+const HQ_ACC_BUDGET_FILE = path.join(DATA_DIR, 'hq-acc-budget.json');
 
 const DEFAULT_ANNUAL_PLAN = {
   '2026': {
@@ -98,5 +108,21 @@ export async function writeDealerAccSellinStore(store: Record<string, number>): 
 
 export function snapshotStoreKey(year: number, brand: string): string {
   return `${year}:${brand}`;
+}
+
+export async function readHqAccBudgetStore(): Promise<Record<string, HqAccBudgetEntry>> {
+  const raw = await readJsonFile<Record<string, JsonValue>>(
+    HQ_ACC_BUDGET_FILE,
+    {} as Record<string, JsonValue>,
+  );
+  const out: Record<string, HqAccBudgetEntry> = { ...DEFAULT_HQ_ACC_BUDGET };
+  for (const b of HQ_ACC_BUDGET_BRANDS) {
+    out[b] = normalizeHqAccBudgetEntry(raw[b]);
+  }
+  return out;
+}
+
+export async function writeHqAccBudgetStore(store: Record<string, HqAccBudgetEntry>): Promise<void> {
+  await writeJsonFile(HQ_ACC_BUDGET_FILE, store as unknown as Record<string, JsonValue>);
 }
 

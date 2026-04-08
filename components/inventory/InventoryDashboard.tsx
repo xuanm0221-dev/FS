@@ -31,6 +31,7 @@ import {
 import InventoryFilterBar from './InventoryFilterBar';
 import InventoryTable from './InventoryTable';
 import InventoryMonthlyTable, { TableData } from './InventoryMonthlyTable';
+import { DEFAULT_HQ_ACC_BUDGET, type HqAccBudgetEntry } from '@/lib/inventory-hq-acc-budget';
 
 type LeafBrand = Exclude<Brand, '전체'>;
 type TopTablePair = { dealer: InventoryTableData; hq: InventoryTableData };
@@ -69,6 +70,48 @@ type AnnualShipmentPlan = Record<AnnualPlanBrand, Record<AnnualPlanSeason, numbe
 type HqClosingByBrand = Record<AnnualPlanBrand, number>;
 type MonthlyInventoryTotalByBrand = Record<AnnualPlanBrand, (number | null)[]>;
 type ShipmentProgressBrand = AnnualPlanBrand;
+
+const HQ_ACC_MILLION_INPUT_RE = /^\d*\.?\d*$/;
+
+function parseHqAccMillionField(raw: string): number {
+  const t = raw.trim().replace(/,/g, '');
+  if (t === '' || t === '.') return 0;
+  const n = parseFloat(t);
+  return Number.isFinite(n) ? n : 0;
+}
+
+function formatHqAccMillionDisplay(n: number): string {
+  if (n === 0) return '';
+  return n.toLocaleString('ko-KR');
+}
+
+function stripHqAccMillionCommas(raw: string): string {
+  return raw.replace(/,/g, '');
+}
+
+function emptyHqAccAmountText(): Record<AnnualPlanBrand, { arrival: string; order: string }> {
+  return {
+    MLB: { arrival: '', order: '' },
+    'MLB KIDS': { arrival: '', order: '' },
+    DISCOVERY: { arrival: '', order: '' },
+  };
+}
+
+function hqAccEntryToAmountText(e: HqAccBudgetEntry): { arrival: string; order: string } {
+  return {
+    arrival: formatHqAccMillionDisplay(e.arrival),
+    order: formatHqAccMillionDisplay(e.order),
+  };
+}
+
+/** 대리상·직영 판매추정 소표 공통: 열 비율 통일로 세로 구분선 정렬 */
+const SALE_ESTIMATE_TABLE_CLASS = 'min-w-0 w-full flex-1 table-fixed border-collapse text-xs';
+const SaleEstimateColgroup = () => (
+  <colgroup>
+    <col style={{ width: '52%' }} />
+    <col style={{ width: '48%' }} />
+  </colgroup>
+);
 
 interface ShipmentProgressRow {
   brand: ShipmentProgressBrand;
@@ -738,7 +781,7 @@ export default function InventoryDashboard() {
   const [accShipmentRatioRows, setAccShipmentRatioRows] = useState<AccShipmentRatioRow[]>([]);
 
   // 보조지표 상위 토글
-  const [auxiliaryOpen, setAuxiliaryOpen] = useState(true);
+  const [auxiliaryOpen, setAuxiliaryOpen] = useState(false);
 
   // 월별 섹션 토글 (기본 닫힘)
   const [monthlyOpen, setMonthlyOpen] = useState(false);
@@ -761,6 +804,15 @@ export default function InventoryDashboard() {
   const [otbError, setOtbError] = useState<string | null>(null);
   const [otbEditMode, setOtbEditMode] = useState(false);
   const [otbDraft, setOtbDraft] = useState<OtbData | null>(null);
+  // 직영 ACC 예산 (입고완료·발주완료·발주기준월) – M 단위
+  const [hqAccBudget, setHqAccBudget] = useState<Record<string, HqAccBudgetEntry>>(() => ({
+    ...DEFAULT_HQ_ACC_BUDGET,
+  }));
+  const [hqAccBudgetDraft, setHqAccBudgetDraft] = useState<Record<string, HqAccBudgetEntry>>(() => ({
+    ...DEFAULT_HQ_ACC_BUDGET,
+  }));
+  const [hqAccAmountText, setHqAccAmountText] = useState(emptyHqAccAmountText);
+  const [hqAccBudgetSaving, setHqAccBudgetSaving] = useState(false);
   const [annualShipmentPlan2026, setAnnualShipmentPlan2026] = useState<AnnualShipmentPlan>(createEmptyAnnualShipmentPlan);
   const [annualShipmentPlanDraft2026, setAnnualShipmentPlanDraft2026] = useState<AnnualShipmentPlan>(createEmptyAnnualShipmentPlan);
   const [annualPlanEditMode, setAnnualPlanEditMode] = useState(false);
@@ -1136,6 +1188,33 @@ export default function InventoryDashboard() {
       cancelled = true;
     };
   }, [year]);
+
+  // 직영 ACC 예산 fetch (마운트 시 한 번)
+  useEffect(() => {
+    let cancelled = false;
+    const run = async () => {
+      try {
+        const res = await fetch('/api/inventory/hq-acc-budget', { cache: 'no-store' });
+        if (cancelled || !res.ok) return;
+        const json = (await res.json()) as { data?: Record<string, HqAccBudgetEntry> };
+        if (cancelled || !json.data) return;
+        setHqAccBudget(json.data);
+        setHqAccBudgetDraft(json.data);
+        setHqAccAmountText(() => {
+          const next = emptyHqAccAmountText();
+          for (const bb of ANNUAL_PLAN_BRANDS) {
+            next[bb] = hqAccEntryToAmountText(json.data![bb] ?? DEFAULT_HQ_ACC_BUDGET[bb]);
+          }
+          return next;
+        });
+      } catch {
+        // 조회 실패 시 기본값 유지
+      }
+    };
+    void run();
+    return () => { cancelled = true; };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // 2026은 snapshot을 우회하므로 성장률 변경 시 리테일 API를 다시 조회한다.
   useEffect(() => {
@@ -3200,6 +3279,41 @@ export default function InventoryDashboard() {
     });
   }, []);
 
+  const handleHqAccBudgetSave = useCallback(async () => {
+    const toSave: Record<string, HqAccBudgetEntry> = { ...DEFAULT_HQ_ACC_BUDGET };
+    for (const bb of ANNUAL_PLAN_BRANDS) {
+      const d = hqAccBudgetDraft[bb] ?? DEFAULT_HQ_ACC_BUDGET[bb];
+      const at = hqAccAmountText[bb];
+      toSave[bb] = {
+        arrival: parseHqAccMillionField(at.arrival),
+        order: parseHqAccMillionField(at.order),
+        arrivalThroughMonth: d.arrivalThroughMonth,
+        orderThroughMonth: d.orderThroughMonth,
+      };
+    }
+    setHqAccBudgetSaving(true);
+    setHqAccBudget(toSave);
+    setHqAccBudgetDraft(toSave);
+    setHqAccAmountText(() => {
+      const next = emptyHqAccAmountText();
+      for (const bb of ANNUAL_PLAN_BRANDS) {
+        next[bb] = hqAccEntryToAmountText(toSave[bb]);
+      }
+      return next;
+    });
+    try {
+      await fetch('/api/inventory/hq-acc-budget', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ data: toSave }),
+      });
+    } catch {
+      // 서버 저장 실패 시 로컬 state 유지
+    } finally {
+      setHqAccBudgetSaving(false);
+    }
+  }, [hqAccBudgetDraft, hqAccAmountText]);
+
   const handleOtbSave = useCallback(async () => {
     if (!otbDraft) return;
     setOtbData(otbDraft);
@@ -3259,14 +3373,13 @@ export default function InventoryDashboard() {
           <div className="mb-6" style={{ paddingLeft: '1.5%', paddingRight: '1.5%' }}>
             <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
               <div className="min-w-0 lg:col-span-1">
-                <div className="mb-3 rounded-lg border border-sky-200 bg-sky-50/70 px-3 py-2 text-sm font-semibold tracking-tight text-slate-900">리테일 성장율</div>
                 <div className="overflow-x-auto rounded-2xl border border-slate-200 bg-white shadow-[0_6px_18px_rgba(15,23,42,0.06)]">
                   <table className="min-w-full border-collapse text-xs">
                     <thead>
                       <tr>
-                        <th className="min-w-[100px] border border-[#2e3d5f] bg-[#1f2a44] px-3 py-2.5 text-left text-[11px] font-semibold tracking-wide text-white">브랜드</th>
-                        <th className="min-w-[84px] border border-[#2e3d5f] bg-[#1f2a44] px-3 py-2.5 text-center text-[11px] font-semibold tracking-wide text-white">대리상</th>
-                        <th className="min-w-[84px] border border-[#2e3d5f] bg-[#1f2a44] px-3 py-2.5 text-center text-[11px] font-semibold tracking-wide text-white">본사</th>
+                        <th className="min-w-[100px] border border-slate-300 bg-slate-200 px-3 py-2.5 text-left text-[11px] font-semibold tracking-wide text-slate-700">리테일 성장율</th>
+                        <th className="min-w-[84px] border border-slate-300 bg-slate-200 px-3 py-2.5 text-center text-[11px] font-semibold tracking-wide text-slate-700">대리상</th>
+                        <th className="min-w-[84px] border border-slate-300 bg-slate-200 px-3 py-2.5 text-center text-[11px] font-semibold tracking-wide text-slate-700">본사</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -3308,23 +3421,22 @@ export default function InventoryDashboard() {
                 </div>
               </div>
               <div className="min-w-0 lg:col-span-2">
-                <div className="mb-3 rounded-lg border border-amber-200 bg-amber-50/70 px-3 py-2 text-sm font-semibold tracking-tight text-slate-900">재고관련 주요지표</div>
                 <div className="overflow-x-auto rounded-2xl border border-slate-200 bg-white shadow-[0_6px_18px_rgba(15,23,42,0.06)]">
                   <table key={`dependent-driver-${DRIVER_COLUMN_HEADERS.join('|')}`} className="min-w-full border-collapse text-xs">
                     <thead>
                       <tr>
-                        <th rowSpan={2} className="min-w-[140px] border border-[#2e3d5f] bg-[#1f2a44] px-3 py-2.5 text-left text-[11px] font-semibold tracking-wide text-white">항목</th>
-                        <th rowSpan={2} className="min-w-[90px] border border-[#2e3d5f] bg-[#1f2a44] px-3 py-2.5 text-center text-[11px] font-semibold tracking-wide text-white">전년</th>
-                        <th colSpan={2} className="border border-[#2e3d5f] bg-[#1f2a44] px-3 py-2.5 text-center text-[11px] font-semibold tracking-wide text-white">계획</th>
-                        <th colSpan={4} className="border border-[#2e3d5f] bg-[#1f2a44] px-3 py-2.5 text-center text-[11px] font-semibold tracking-wide text-white">Rolling</th>
+                        <th rowSpan={2} className="min-w-[140px] border border-slate-300 bg-slate-200 px-3 py-2.5 text-left text-[11px] font-semibold tracking-wide text-slate-700">재고관련 주요지표</th>
+                        <th rowSpan={2} className="min-w-[90px] border border-slate-300 bg-slate-200 px-3 py-2.5 text-center text-[11px] font-semibold tracking-wide text-slate-700">전년</th>
+                        <th colSpan={2} className="border border-slate-300 bg-slate-200 px-3 py-2.5 text-center text-[11px] font-semibold tracking-wide text-slate-700">계획</th>
+                        <th colSpan={4} className="border border-slate-300 bg-slate-200 px-3 py-2.5 text-center text-[11px] font-semibold tracking-wide text-slate-700">Rolling</th>
                       </tr>
                       <tr>
-                        <th className="min-w-[90px] border border-[#3b4b6f] bg-[#2a3654] px-3 py-2 text-center text-[11px] font-semibold tracking-wide text-white">금액</th>
-                        <th className="min-w-[70px] border border-[#3b4b6f] bg-[#2a3654] px-3 py-2 text-center text-[11px] font-semibold tracking-wide text-white">YOY</th>
-                        <th className="min-w-[90px] border border-[#3b4b6f] bg-[#2a3654] px-3 py-2 text-center text-[11px] font-semibold tracking-wide text-white">금액</th>
-                        <th className="min-w-[70px] border border-[#3b4b6f] bg-[#2a3654] px-3 py-2 text-center text-[11px] font-semibold tracking-wide text-white">YOY</th>
-                        <th className="min-w-[100px] border border-[#3b4b6f] bg-[#2a3654] px-3 py-2 text-center text-[11px] font-semibold tracking-wide text-white">계획대비 증감</th>
-                        <th className="min-w-[100px] border border-[#3b4b6f] bg-[#2a3654] px-3 py-2 text-center text-[11px] font-semibold tracking-wide text-white">계획대비 증감(%)</th>
+                        <th className="min-w-[90px] border border-slate-300 bg-slate-100 px-3 py-2 text-center text-[11px] font-semibold tracking-wide text-slate-600">금액</th>
+                        <th className="min-w-[70px] border border-slate-300 bg-slate-100 px-3 py-2 text-center text-[11px] font-semibold tracking-wide text-slate-600">YOY</th>
+                        <th className="min-w-[90px] border border-slate-300 bg-slate-100 px-3 py-2 text-center text-[11px] font-semibold tracking-wide text-slate-600">금액</th>
+                        <th className="min-w-[70px] border border-slate-300 bg-slate-100 px-3 py-2 text-center text-[11px] font-semibold tracking-wide text-slate-600">YOY</th>
+                        <th className="min-w-[100px] border border-slate-300 bg-slate-100 px-3 py-2 text-center text-[11px] font-semibold tracking-wide text-slate-600">계획대비 증감</th>
+                        <th className="min-w-[100px] border border-slate-300 bg-slate-100 px-3 py-2 text-center text-[11px] font-semibold tracking-wide text-slate-600">계획대비 증감(%)</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -3463,9 +3575,483 @@ export default function InventoryDashboard() {
                 </div>
               </div>
             </div>
-            <div className="mt-5 border-t border-slate-300/80" />
           </div>
         )}
+
+        {/* 브랜드별 대리상 판매추정 / 판매 섹션 (2026) */}
+        {year === 2026 && (() => {
+          const ESTIMATE_TABLES = [
+            { label: '합계', dataKey: '재고자산합계', rows: [
+              { label: '리테일(연간)', field: 'sellOutYoy' as const },
+              { label: '매입합계', field: 'sellInYoy' as const },
+              { label: '재고증감', field: 'delta' as const },
+            ]},
+            { label: '의류', dataKey: '의류합계', rows: [
+              { label: '의류판매', field: 'sellOutYoy' as const },
+              { label: 'OTB', field: 'sellInYoy' as const },
+              { label: '의류재고', field: 'delta' as const },
+            ]},
+            { label: 'ACC', dataKey: 'ACC합계', rows: [
+              { label: 'ACC판매', field: 'sellOutYoy' as const },
+              { label: 'ACC입고', field: 'sellInYoy' as const },
+              { label: 'ACC재고', field: 'delta' as const },
+            ]},
+          ];
+          const HQ_TABLES = [
+            { label: '합계', dataKey: '재고자산합계', rows: [
+              { label: '대리상출고', field: 'sellOutYoy' as const },
+              { label: '직영판매', field: 'hqSalesYoy' as const },
+              { label: '상품매입', field: 'sellInM' as const },
+            ]},
+            { label: '의류', dataKey: '의류합계', rows: [
+              { label: '의류판매', field: 'sellOutYoy' as const },
+              { label: '의류재고', field: 'delta' as const },
+              { label: '의류매입', field: 'sellInM' as const },
+            ]},
+            { label: 'ACC', dataKey: 'ACC합계', rows: [
+              { label: 'ACC판매', field: 'sellOutYoy' as const },
+              { label: 'ACC재고', field: 'delta' as const },
+              { label: 'ACC매입', field: 'sellInM' as const },
+            ]},
+          ];
+          return (
+            <div className="mb-6 mt-4" style={{ paddingLeft: '1.5%', paddingRight: '1.5%' }}>
+              <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-[0_6px_18px_rgba(15,23,42,0.06)]">
+                <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
+                {ANNUAL_PLAN_BRANDS.map((b) => (
+                  <div key={`brand-sale-${b}`} className="min-w-0 px-4 py-4">
+                    {/* 대리상 판매추정 */}
+                    <div className="mb-2 flex flex-wrap items-baseline gap-x-2 gap-y-1">
+                      <div
+                        className={`flex items-baseline gap-2 rounded-md px-2 py-1 ${
+                          100 + growthRateByBrand[b] >= 100 ? 'bg-sky-100 text-sky-900' : 'bg-rose-100 text-rose-900'
+                        }`}
+                      >
+                        <span className="text-sm font-semibold">{b} 대리상 판매추정</span>
+                        <span className="text-sm font-semibold tabular-nums">{100 + growthRateByBrand[b]}%</span>
+                      </div>
+                      <span className="text-sm text-slate-500">[재고주수: 신발 {accTargetWoiDealer['신발' as AccKey]}주, 모자 {accTargetWoiDealer['모자' as AccKey]}주, 가방 {accTargetWoiDealer['가방' as AccKey]}주]</span>
+                    </div>
+                    {(() => {
+                      const displayData = perBrandTopTableDisplayData[b] ?? perBrandTopTable[b];
+                      const prevData = perBrandPrevYearTableData[b];
+                      const dealerRows = displayData?.dealer?.rows;
+                      const prevDealerRows = prevData?.dealer?.rows;
+                      const renderDealerSaleTable = (tbl: (typeof ESTIMATE_TABLES)[number]) => {
+                        const curRow = dealerRows?.find((r) => r.key === tbl.dataKey);
+                        const prevRow = prevDealerRows?.find((r) => r.key === tbl.dataKey);
+                        const saleThBg = tbl.label === '합계' ? 'border border-[#2e3d5f] bg-[#1f2a44]' : 'border border-slate-400 bg-slate-500';
+                        return (
+                          <table key={tbl.label} className={SALE_ESTIMATE_TABLE_CLASS}>
+                            <SaleEstimateColgroup />
+                            <thead>
+                              <tr>
+                                <th className={`${saleThBg} px-2 py-2 text-left text-xs font-semibold text-white whitespace-nowrap`}>{tbl.label}</th>
+                                <th className={`${saleThBg} px-2 py-2 text-center text-xs font-medium text-white whitespace-nowrap`}>금액</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {tbl.rows.map((row) => {
+                                let val = '-';
+                                if (curRow) {
+                                  if (row.field === 'delta') {
+                                    const d = Math.round(curRow.delta / 1000);
+                                    val = `${d >= 0 ? '+' : ''}${d.toLocaleString()}M`;
+                                  } else if (row.field === 'sellOutYoy') {
+                                    const yoy = prevRow && prevRow.sellOutTotal > 0 ? curRow.sellOutTotal / prevRow.sellOutTotal : null;
+                                    val = yoy != null ? `${(yoy * 100).toFixed(1)}%` : '-';
+                                  } else if (row.field === 'sellInYoy') {
+                                    const yoy = prevRow && prevRow.sellInTotal > 0 ? curRow.sellInTotal / prevRow.sellInTotal : null;
+                                    val = yoy != null ? `${(yoy * 100).toFixed(1)}%` : '-';
+                                  }
+                                }
+                                return (
+                                  <tr key={row.label} className="bg-white">
+                                    <td className="border-b border-slate-200 px-2 py-1.5 align-middle font-medium text-slate-700 whitespace-nowrap">{row.label}</td>
+                                    <td className="border-b border-slate-200 px-2 py-1.5 text-right align-middle font-semibold tabular-nums text-slate-800 whitespace-nowrap">{val}</td>
+                                  </tr>
+                                );
+                              })}
+                            </tbody>
+                          </table>
+                        );
+                      };
+                      const estimateSummary = ESTIMATE_TABLES.find((t) => t.label === '합계');
+                      const estimateDetail = ESTIMATE_TABLES.filter((t) => t.label !== '합계');
+                      if (!estimateSummary) return null;
+                      return (
+                        <div className="flex gap-2">
+                          {renderDealerSaleTable(estimateSummary)}
+                          <div className="flex min-w-0 flex-[2] gap-0">
+                            {estimateDetail.map((tbl) => renderDealerSaleTable(tbl))}
+                          </div>
+                        </div>
+                      );
+                    })()}
+
+                    {/* 직영 판매추정 */}
+                    <div className="mb-2 mt-4 flex flex-wrap items-baseline gap-x-2 gap-y-1">
+                      <div
+                        className={`flex items-baseline gap-2 rounded-md px-2 py-1 ${
+                          100 + growthRateHqByBrand[b] >= 100 ? 'bg-sky-100 text-sky-900' : 'bg-rose-100 text-rose-900'
+                        }`}
+                      >
+                        <span className="text-sm font-semibold">{b} 직영 판매추정</span>
+                        <span className="text-sm font-semibold tabular-nums">{100 + growthRateHqByBrand[b]}%</span>
+                      </div>
+                      <span className="text-sm text-slate-500">[재고주수: 신발 {accTargetWoiHq['신발' as AccKey]}주, 모자 {accTargetWoiHq['모자' as AccKey]}주, 가방 {accTargetWoiHq['가방' as AccKey]}주]</span>
+                    </div>
+                    {(() => {
+                      const displayData = perBrandTopTableDisplayData[b] ?? perBrandTopTable[b];
+                      const prevData = perBrandPrevYearTableData[b];
+                      const hqRows = displayData?.hq?.rows;
+                      const prevHqRows = prevData?.hq?.rows;
+                      const renderHqSaleTable = (tbl: (typeof HQ_TABLES)[number]) => {
+                        const curRow = hqRows?.find((r) => r.key === tbl.dataKey);
+                        const prevRow = prevHqRows?.find((r) => r.key === tbl.dataKey);
+                        const saleThBg = tbl.label === '합계' ? 'border border-[#2e3d5f] bg-[#1f2a44]' : 'border border-slate-400 bg-slate-500';
+                        return (
+                          <table key={tbl.label} className={SALE_ESTIMATE_TABLE_CLASS}>
+                            <SaleEstimateColgroup />
+                            <thead>
+                              <tr>
+                                <th className={`${saleThBg} px-2 py-2 text-left text-xs font-semibold text-white whitespace-nowrap`}>{tbl.label}</th>
+                                <th className={`${saleThBg} px-2 py-2 text-center text-xs font-medium text-white whitespace-nowrap`}>금액</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {tbl.rows.map((row) => {
+                                let val = '-';
+                                if (curRow) {
+                                  if (row.field === 'delta') {
+                                    const d = Math.round(curRow.delta / 1000);
+                                    val = `${d >= 0 ? '+' : ''}${d.toLocaleString()}M`;
+                                  } else if (row.field === 'sellOutYoy') {
+                                    const yoy = prevRow && prevRow.sellOutTotal > 0 ? curRow.sellOutTotal / prevRow.sellOutTotal : null;
+                                    val = yoy != null ? `${(yoy * 100).toFixed(1)}%` : '-';
+                                  } else if (row.field === 'hqSalesYoy') {
+                                    const yoy = prevRow && (prevRow.hqSalesTotal ?? 0) > 0 ? (curRow.hqSalesTotal ?? 0) / (prevRow.hqSalesTotal ?? 1) : null;
+                                    val = yoy != null ? `${(yoy * 100).toFixed(1)}%` : '-';
+                                  } else if (row.field === 'sellInM') {
+                                    val = `${Math.round(curRow.sellInTotal / 1000).toLocaleString()}M`;
+                                  }
+                                }
+                                return (
+                                  <tr key={row.label} className="bg-white">
+                                    <td className="border-b border-slate-200 px-2 py-1.5 align-middle font-medium text-slate-700 whitespace-nowrap">{row.label}</td>
+                                    <td className="border-b border-slate-200 px-2 py-1.5 text-right align-middle font-semibold tabular-nums text-slate-800 whitespace-nowrap">{val}</td>
+                                  </tr>
+                                );
+                              })}
+                            </tbody>
+                          </table>
+                        );
+                      };
+                      const hqSummary = HQ_TABLES.find((t) => t.label === '합계');
+                      const hqDetail = HQ_TABLES.filter((t) => t.label !== '합계');
+                      if (!hqSummary) return null;
+
+                      // 의류 시즌별 sellInTotal (M 단위) – 본사재고표에서 추출
+                      const seasonSellInM = (seasonKey: string) => {
+                        const r = hqRows?.find((row) => row.key === seasonKey);
+                        return r ? Math.round(r.sellInTotal / 1000) : null;
+                      };
+                      const ss26M = seasonSellInM('당년S');
+                      const fw26M = seasonSellInM('당년F');
+                      const ss27M = seasonSellInM('차기시즌');
+
+                      // ACC 예산 draft (이 브랜드)
+                      const accDraft = hqAccBudgetDraft[b] ?? DEFAULT_HQ_ACC_BUDGET[b];
+                      const accTextRow = hqAccAmountText[b] ?? { arrival: '', order: '' };
+                      const remaining =
+                        parseHqAccMillionField(accTextRow.order) - parseHqAccMillionField(accTextRow.arrival);
+
+                      return (
+                        <div className="flex gap-2">
+                          {renderHqSaleTable(hqSummary)}
+                          <div className="flex min-w-0 flex-[2] gap-0">
+                            {/* 의류 서브테이블 – 기본 행 + 시즌별 추가 행 */}
+                            {(() => {
+                              const clothesTbl = hqDetail.find((t) => t.label === '의류');
+                              if (!clothesTbl) return null;
+                              const saleThBg = 'border border-slate-400 bg-slate-500';
+                              return (
+                                <table key="의류" className={SALE_ESTIMATE_TABLE_CLASS}>
+                                  <SaleEstimateColgroup />
+                                  <thead>
+                                    <tr>
+                                      <th className={`${saleThBg} px-2 py-2 text-left text-xs font-semibold text-white whitespace-nowrap`}>의류</th>
+                                      <th className={`${saleThBg} px-2 py-2 text-center text-xs font-medium text-white whitespace-nowrap`}>금액</th>
+                                    </tr>
+                                  </thead>
+                                  <tbody>
+                                    {clothesTbl.rows.map((row) => {
+                                      const curRow = hqRows?.find((r) => r.key === clothesTbl.dataKey);
+                                      const prevRow = prevHqRows?.find((r) => r.key === clothesTbl.dataKey);
+                                      let val = '-';
+                                      if (curRow) {
+                                        if (row.field === 'delta') {
+                                          const d = Math.round(curRow.delta / 1000);
+                                          val = `${d >= 0 ? '+' : ''}${d.toLocaleString()}M`;
+                                        } else if (row.field === 'sellOutYoy') {
+                                          const yoy = prevRow && prevRow.sellOutTotal > 0 ? curRow.sellOutTotal / prevRow.sellOutTotal : null;
+                                          val = yoy != null ? `${(yoy * 100).toFixed(1)}%` : '-';
+                                        } else if (row.field === 'sellInM') {
+                                          val = `${Math.round(curRow.sellInTotal / 1000).toLocaleString()}M`;
+                                        }
+                                      }
+                                      return (
+                                        <tr key={row.label} className="bg-white">
+                                          <td className="border-b border-slate-200 px-2 py-1.5 align-middle font-medium text-slate-700 whitespace-nowrap">{row.label}</td>
+                                          <td className="border-b border-slate-200 px-2 py-1.5 text-right align-middle font-semibold tabular-nums text-slate-800 whitespace-nowrap">{val}</td>
+                                        </tr>
+                                      );
+                                    })}
+                                    {/* 시즌별 추가 행 */}
+                                    {[
+                                      { label: '26SS', valueM: ss26M },
+                                      { label: '26FW', valueM: fw26M },
+                                      { label: '27SS', valueM: ss27M },
+                                    ].map(({ label, valueM }) => (
+                                      <tr key={label} className="bg-slate-50">
+                                        <td className="border-b border-slate-200 px-2 py-1.5 align-middle font-medium text-slate-500 whitespace-nowrap">{label}</td>
+                                        <td className="border-b border-slate-200 px-2 py-1.5 text-right align-middle tabular-nums text-slate-600 whitespace-nowrap">
+                                          {valueM != null ? `${valueM.toLocaleString()}M` : '-'}
+                                        </td>
+                                      </tr>
+                                    ))}
+                                  </tbody>
+                                </table>
+                              );
+                            })()}
+                            {/* ACC 서브테이블 – 대리상·직영 공통 SALE_ESTIMATE_TABLE_CLASS / colgroup */}
+                            {(() => {
+                              const accTbl = hqDetail.find((t) => t.label === 'ACC');
+                              if (!accTbl) return null;
+                              const saleThBg = 'border border-slate-400 bg-slate-500';
+                              const accTdLabel = 'border-b border-slate-200 px-2 py-1.5 align-middle text-xs font-medium whitespace-nowrap';
+                              const accTdAmount =
+                                'border-b border-slate-200 px-2 py-1.5 text-right align-middle text-xs tabular-nums whitespace-nowrap';
+                              return (
+                                <table key="ACC" className={SALE_ESTIMATE_TABLE_CLASS}>
+                                  <SaleEstimateColgroup />
+                                  <thead>
+                                    <tr>
+                                      <th className={`${saleThBg} px-2 py-2 text-left text-xs font-semibold text-white whitespace-nowrap`}>ACC</th>
+                                      <th className={`${saleThBg} px-2 py-2 text-center text-xs font-medium text-white whitespace-nowrap`}>금액</th>
+                                    </tr>
+                                  </thead>
+                                  <tbody>
+                                    {accTbl.rows.map((row) => {
+                                      const curRow = hqRows?.find((r) => r.key === accTbl.dataKey);
+                                      const prevRow = prevHqRows?.find((r) => r.key === accTbl.dataKey);
+                                      let val = '-';
+                                      if (curRow) {
+                                        if (row.field === 'delta') {
+                                          const d = Math.round(curRow.delta / 1000);
+                                          val = `${d >= 0 ? '+' : ''}${d.toLocaleString()}M`;
+                                        } else if (row.field === 'sellOutYoy') {
+                                          const yoy = prevRow && prevRow.sellOutTotal > 0 ? curRow.sellOutTotal / prevRow.sellOutTotal : null;
+                                          val = yoy != null ? `${(yoy * 100).toFixed(1)}%` : '-';
+                                        } else if (row.field === 'sellInM') {
+                                          val = `${Math.round(curRow.sellInTotal / 1000).toLocaleString()}M`;
+                                        }
+                                      }
+                                      return (
+                                        <tr key={row.label} className="bg-white">
+                                          <td className={`${accTdLabel} text-slate-700`}>{row.label}</td>
+                                          <td className={`${accTdAmount} font-semibold text-slate-800`}>{val}</td>
+                                        </tr>
+                                      );
+                                    })}
+                                    {/* 입고완료(월) */}
+                                    <tr className="bg-slate-50">
+                                      <td className={`${accTdLabel} text-slate-500`}>
+                                        <span className="inline-flex items-center gap-px whitespace-nowrap">
+                                          입고완료(
+                                          <select
+                                            aria-label={`${b} 입고 기준월`}
+                                            className="cursor-pointer appearance-none border-0 bg-transparent p-0 text-xs font-medium text-slate-500 underline decoration-dotted underline-offset-2 outline-none focus:ring-0 [&::-ms-expand]:hidden"
+                                            value={accDraft.arrivalThroughMonth}
+                                            onChange={(e) => {
+                                              const m = Number(e.target.value);
+                                              setHqAccBudgetDraft((prev) => ({
+                                                ...prev,
+                                                [b]: {
+                                                  ...(prev[b] ?? DEFAULT_HQ_ACC_BUDGET[b]),
+                                                  arrivalThroughMonth: Number.isFinite(m)
+                                                    ? Math.min(12, Math.max(1, m))
+                                                    : 8,
+                                                },
+                                              }));
+                                            }}
+                                          >
+                                            {Array.from({ length: 12 }, (_, i) => i + 1).map((mo) => (
+                                              <option key={mo} value={mo}>
+                                                {mo}
+                                              </option>
+                                            ))}
+                                          </select>
+                                          월)
+                                        </span>
+                                      </td>
+                                      <td className={`${accTdAmount} text-slate-600`}>
+                                        <span className="inline-flex w-full min-w-0 items-baseline justify-end gap-px">
+                                          <input
+                                            type="text"
+                                            inputMode="decimal"
+                                            autoComplete="off"
+                                            className="min-w-0 flex-1 border-0 bg-transparent p-0 text-right text-xs font-semibold tabular-nums text-slate-600 shadow-none outline-none ring-0 focus:ring-0 focus:outline-none"
+                                            value={accTextRow.arrival}
+                                            onChange={(e) => {
+                                              const stripped = stripHqAccMillionCommas(e.target.value);
+                                              if (!HQ_ACC_MILLION_INPUT_RE.test(stripped)) return;
+                                              setHqAccAmountText((prev) => ({
+                                                ...prev,
+                                                [b]: { ...prev[b], arrival: stripped },
+                                              }));
+                                              const num = parseHqAccMillionField(stripped);
+                                              setHqAccBudgetDraft((prev) => ({
+                                                ...prev,
+                                                [b]: { ...(prev[b] ?? DEFAULT_HQ_ACC_BUDGET[b]), arrival: num },
+                                              }));
+                                            }}
+                                            onFocus={(e) => {
+                                              const stripped = stripHqAccMillionCommas(e.target.value);
+                                              if (stripped !== e.target.value) {
+                                                setHqAccAmountText((prev) => ({
+                                                  ...prev,
+                                                  [b]: { ...prev[b], arrival: stripped },
+                                                }));
+                                              }
+                                            }}
+                                            onBlur={(e) => {
+                                              const num = parseHqAccMillionField(e.target.value);
+                                              setHqAccBudgetDraft((prev) => ({
+                                                ...prev,
+                                                [b]: { ...(prev[b] ?? DEFAULT_HQ_ACC_BUDGET[b]), arrival: num },
+                                              }));
+                                              setHqAccAmountText((prev) => ({
+                                                ...prev,
+                                                [b]: { ...prev[b], arrival: formatHqAccMillionDisplay(num) },
+                                              }));
+                                            }}
+                                          />
+                                          <span className="shrink-0 text-slate-500">M</span>
+                                        </span>
+                                      </td>
+                                    </tr>
+                                    {/* 발주완료(월) */}
+                                    <tr className="bg-slate-50">
+                                      <td className={`${accTdLabel} text-slate-500`}>
+                                        <span className="inline-flex items-center gap-px whitespace-nowrap">
+                                          발주완료(
+                                          <select
+                                            aria-label={`${b} 발주 기준월`}
+                                            className="cursor-pointer appearance-none border-0 bg-transparent p-0 text-xs font-medium text-slate-500 underline decoration-dotted underline-offset-2 outline-none focus:ring-0 [&::-ms-expand]:hidden"
+                                            value={accDraft.orderThroughMonth}
+                                            onChange={(e) => {
+                                              const m = Number(e.target.value);
+                                              setHqAccBudgetDraft((prev) => ({
+                                                ...prev,
+                                                [b]: {
+                                                  ...(prev[b] ?? DEFAULT_HQ_ACC_BUDGET[b]),
+                                                  orderThroughMonth: Number.isFinite(m)
+                                                    ? Math.min(12, Math.max(1, m))
+                                                    : 8,
+                                                },
+                                              }));
+                                            }}
+                                          >
+                                            {Array.from({ length: 12 }, (_, i) => i + 1).map((mo) => (
+                                              <option key={mo} value={mo}>
+                                                {mo}
+                                              </option>
+                                            ))}
+                                          </select>
+                                          월)
+                                        </span>
+                                      </td>
+                                      <td className={`${accTdAmount} text-slate-600`}>
+                                        <span className="inline-flex w-full min-w-0 items-baseline justify-end gap-px">
+                                          <input
+                                            type="text"
+                                            inputMode="decimal"
+                                            autoComplete="off"
+                                            className="min-w-0 flex-1 border-0 bg-transparent p-0 text-right text-xs font-semibold tabular-nums text-slate-600 shadow-none outline-none ring-0 focus:ring-0 focus:outline-none"
+                                            value={accTextRow.order}
+                                            onChange={(e) => {
+                                              const stripped = stripHqAccMillionCommas(e.target.value);
+                                              if (!HQ_ACC_MILLION_INPUT_RE.test(stripped)) return;
+                                              setHqAccAmountText((prev) => ({
+                                                ...prev,
+                                                [b]: { ...prev[b], order: stripped },
+                                              }));
+                                              const num = parseHqAccMillionField(stripped);
+                                              setHqAccBudgetDraft((prev) => ({
+                                                ...prev,
+                                                [b]: { ...(prev[b] ?? DEFAULT_HQ_ACC_BUDGET[b]), order: num },
+                                              }));
+                                            }}
+                                            onFocus={(e) => {
+                                              const stripped = stripHqAccMillionCommas(e.target.value);
+                                              if (stripped !== e.target.value) {
+                                                setHqAccAmountText((prev) => ({
+                                                  ...prev,
+                                                  [b]: { ...prev[b], order: stripped },
+                                                }));
+                                              }
+                                            }}
+                                            onBlur={(e) => {
+                                              const num = parseHqAccMillionField(e.target.value);
+                                              setHqAccBudgetDraft((prev) => ({
+                                                ...prev,
+                                                [b]: { ...(prev[b] ?? DEFAULT_HQ_ACC_BUDGET[b]), order: num },
+                                              }));
+                                              setHqAccAmountText((prev) => ({
+                                                ...prev,
+                                                [b]: { ...prev[b], order: formatHqAccMillionDisplay(num) },
+                                              }));
+                                            }}
+                                          />
+                                          <span className="shrink-0 text-slate-500">M</span>
+                                        </span>
+                                      </td>
+                                    </tr>
+                                    {/* 잔여예산 – 자동 계산 (발주 - 입고) */}
+                                    <tr className="bg-slate-50">
+                                      <td className={`${accTdLabel} text-slate-500`}>잔여예산</td>
+                                      <td className={`${accTdAmount} font-semibold ${remaining >= 0 ? 'text-sky-700' : 'text-rose-600'}`}>
+                                        {remaining >= 0 ? '+' : ''}
+                                        {remaining.toLocaleString('ko-KR')}M
+                                      </td>
+                                    </tr>
+                                  </tbody>
+                                </table>
+                              );
+                            })()}
+                          </div>
+                        </div>
+                      );
+                    })()}
+                    {/* 직영 ACC 예산 저장 버튼 */}
+                    <div className="mt-2 flex justify-end">
+                      <button
+                        type="button"
+                        disabled={hqAccBudgetSaving}
+                        onClick={() => void handleHqAccBudgetSave()}
+                        className="rounded-md border border-slate-300 bg-transparent px-3 py-1 text-xs font-semibold text-slate-700 hover:border-slate-400 hover:bg-slate-50/80 disabled:opacity-50"
+                      >
+                        {hqAccBudgetSaving ? '저장 중...' : 'ACC 예산 저장'}
+                      </button>
+                    </div>
+                  </div>
+                ))}
+                </div>
+              </div>
+            </div>
+          );
+        })()}
 
         {/* 브랜드별 토글 헤더 */}
         <div className="mt-3" style={{ paddingLeft: '1.5%', paddingRight: '1.5%' }}>

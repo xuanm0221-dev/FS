@@ -3601,15 +3601,17 @@ export default function InventoryDashboard() {
             { label: '합계', dataKey: '재고자산합계', rows: [
               { label: '대리상출고', field: 'sellOutYoy' as const },
               { label: '직영판매', field: 'hqSalesYoy' as const },
+              { label: '출고합계 YOY', field: 'combinedSalesYoy' as const },
+              { label: '재고증감', field: 'closingDelta' as const },
               { label: '상품매입', field: 'sellInM' as const },
             ]},
             { label: '의류', dataKey: '의류합계', rows: [
-              { label: '의류판매', field: 'sellOutYoy' as const },
+              { label: '의류판매', field: 'combinedSalesYoy' as const },
               { label: '의류재고', field: 'delta' as const },
               { label: '의류매입', field: 'sellInM' as const },
             ]},
             { label: 'ACC', dataKey: 'ACC합계', rows: [
-              { label: 'ACC판매', field: 'sellOutYoy' as const },
+              { label: 'ACC판매', field: 'combinedSalesYoy' as const },
               { label: 'ACC재고', field: 'delta' as const },
               { label: 'ACC매입', field: 'sellInM' as const },
             ]},
@@ -3729,9 +3731,19 @@ export default function InventoryDashboard() {
                                   } else if (row.field === 'sellOutYoy') {
                                     const yoy = prevRow && prevRow.sellOutTotal > 0 ? curRow.sellOutTotal / prevRow.sellOutTotal : null;
                                     val = yoy != null ? `${(yoy * 100).toFixed(1)}%` : '-';
+                                  } else if (row.field === 'combinedSalesYoy') {
+                                    const curCombined = curRow.sellOutTotal + (curRow.hqSalesTotal ?? 0);
+                                    const prevCombined = prevRow ? prevRow.sellOutTotal + (prevRow.hqSalesTotal ?? 0) : 0;
+                                    const yoy = prevCombined > 0 ? curCombined / prevCombined : null;
+                                    val = yoy != null ? `${(yoy * 100).toFixed(1)}%` : '-';
                                   } else if (row.field === 'hqSalesYoy') {
                                     const yoy = prevRow && (prevRow.hqSalesTotal ?? 0) > 0 ? (curRow.hqSalesTotal ?? 0) / (prevRow.hqSalesTotal ?? 1) : null;
                                     val = yoy != null ? `${(yoy * 100).toFixed(1)}%` : '-';
+                                  } else if (row.field === 'closingDelta') {
+                                    if (prevRow) {
+                                      const d = Math.round((curRow.closing - prevRow.closing) / 1000);
+                                      val = `${d >= 0 ? '+' : ''}${d.toLocaleString()}M`;
+                                    }
                                   } else if (row.field === 'sellInM') {
                                     val = `${Math.round(curRow.sellInTotal / 1000).toLocaleString()}M`;
                                   }
@@ -3796,6 +3808,11 @@ export default function InventoryDashboard() {
                                         } else if (row.field === 'sellOutYoy') {
                                           const yoy = prevRow && prevRow.sellOutTotal > 0 ? curRow.sellOutTotal / prevRow.sellOutTotal : null;
                                           val = yoy != null ? `${(yoy * 100).toFixed(1)}%` : '-';
+                                        } else if (row.field === 'combinedSalesYoy') {
+                                          const curCombined = curRow.sellOutTotal + (curRow.hqSalesTotal ?? 0);
+                                          const prevCombined = prevRow ? prevRow.sellOutTotal + (prevRow.hqSalesTotal ?? 0) : 0;
+                                          const yoy = prevCombined > 0 ? curCombined / prevCombined : null;
+                                          val = yoy != null ? `${(yoy * 100).toFixed(1)}%` : '-';
                                         } else if (row.field === 'sellInM') {
                                           val = `${Math.round(curRow.sellInTotal / 1000).toLocaleString()}M`;
                                         }
@@ -3852,6 +3869,11 @@ export default function InventoryDashboard() {
                                           val = `${d >= 0 ? '+' : ''}${d.toLocaleString()}M`;
                                         } else if (row.field === 'sellOutYoy') {
                                           const yoy = prevRow && prevRow.sellOutTotal > 0 ? curRow.sellOutTotal / prevRow.sellOutTotal : null;
+                                          val = yoy != null ? `${(yoy * 100).toFixed(1)}%` : '-';
+                                        } else if (row.field === 'combinedSalesYoy') {
+                                          const curCombined = curRow.sellOutTotal + (curRow.hqSalesTotal ?? 0);
+                                          const prevCombined = prevRow ? prevRow.sellOutTotal + (prevRow.hqSalesTotal ?? 0) : 0;
+                                          const yoy = prevCombined > 0 ? curCombined / prevCombined : null;
                                           val = yoy != null ? `${(yoy * 100).toFixed(1)}%` : '-';
                                         } else if (row.field === 'sellInM') {
                                           val = `${Math.round(curRow.sellInTotal / 1000).toLocaleString()}M`;
@@ -4019,8 +4041,8 @@ export default function InventoryDashboard() {
                                       </td>
                                     </tr>
                                     {/* 잔여예산 – 자동 계산 (발주 - 입고) */}
-                                    <tr className="bg-slate-50">
-                                      <td className={`${accTdLabel} text-slate-500`}>잔여예산</td>
+                                    <tr className="bg-amber-100">
+                                      <td className={`${accTdLabel} text-amber-800`}>잔여예산</td>
                                       <td className={`${accTdAmount} font-semibold ${remaining >= 0 ? 'text-sky-700' : 'text-rose-600'}`}>
                                         {remaining >= 0 ? '+' : ''}
                                         {remaining.toLocaleString('ko-KR')}M

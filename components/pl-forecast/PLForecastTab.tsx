@@ -20,6 +20,7 @@ import {
   type SalesBrand,
   type ScenarioDef,
   type ScenarioKey,
+  type ScenarioInventoryPayload,
 } from './plForecastConfig';
 
 type MonthlyInputs = Record<ForecastLeafBrand, Record<string, (number | null)[]>>;
@@ -809,7 +810,16 @@ function readInventoryGrowthParams(): InventoryGrowthParams {
   }
 }
 
-export default function PLForecastTab() {
+type PLForecastTabProps = {
+  /**
+   * 재고자산(sim)에서 "재계산/저장"으로 상위(app/page.tsx)가 들고 있는 시나리오 재고.
+   * - 값이 있으면 PL(sim) 시나리오 모달은 이걸 우선 사용한다.
+   * - null이면 `/api/inventory/scenario-inventory` GET으로 기본값(git에 커밋된 JSON) 읽음.
+   */
+  scenarioOverride?: ScenarioInventoryPayload | null;
+};
+
+export default function PLForecastTab({ scenarioOverride = null }: PLForecastTabProps = {}) {
   const [activeBrand, setActiveBrand] = useState<string | null>(null);
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set(['Tag매출', '실판매출', '매출원가 합계', '직접비', '영업비']));
   const [logicGuideCollapsed, setLogicGuideCollapsed] = useState<boolean>(true);
@@ -903,6 +913,12 @@ export default function PLForecastTab() {
   const [scenarioError, setScenarioError] = useState<string | null>(null);
   const [scenarioData, setScenarioData] = useState<AllScenarioData | null>(null);
   const [scenarioModalBrand, setScenarioModalBrand] = useState<string | null>(null);
+
+  // 재고자산(sim)에서 "재계산/저장"으로 override가 갱신되면 캐시된 시나리오 결과를 무효화.
+  // → 다음 모달 열기에서 새 값으로 다시 계산 (openScenarioModal의 early-return 방지)
+  useEffect(() => {
+    setScenarioData(null);
+  }, [scenarioOverride]);
   const [scenarioCollapsedAccounts, setScenarioCollapsedAccounts] = useState<Set<string>>(
     new Set(['Tag매출', '실판매출', '매출원가 합계', '직접비', '영업비']),
   );
@@ -2280,36 +2296,6 @@ export default function PLForecastTab() {
     !!directExpenseRatioError ||
     !!tagCostRatioError;
 
-  const handleDownloadJson = () => {
-    const viewLabel = FORECAST_BRANDS.find((b) => b.id === activeBrand)?.label ?? '법인';
-    const rows = rowDefs.map((row) => {
-      const series = getRowSeries(row.account);
-      return {
-        account: row.account,
-        level: row.level,
-        isGroup: row.isGroup ?? false,
-        format: row.format,
-        annual2025: series.annual2025,
-        monthly: series.monthly,
-        annual2026: getAnnual26Value(row.account),
-      };
-    });
-    const data = {
-      view: viewLabel,
-      generatedAt: new Date().toISOString(),
-      unit: 'CNY K',
-      months: MONTH_HEADERS,
-      rows,
-    };
-    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `PL_FY26_${viewLabel}_${new Date().toISOString().slice(0, 10)}.json`;
-    a.click();
-    URL.revokeObjectURL(url);
-  };
-
   // ─── 시나리오 모달 헬퍼 함수들 ──────────────────────────────────────────────
 
   const getScenarioRowSeries = (account: string, brandKey: string | null, result: ScenarioResult): (number | null)[] => {
@@ -2437,21 +2423,31 @@ export default function PLForecastTab() {
     setScenarioModalBrand(null);
 
     try {
-      // 재고자산(sim)에서 "재계산/저장"으로 확정한 본사리테일 판매 데이터 읽기
+      // 재고자산(sim)에서 "재계산/저장"으로 확정한 본사리테일 판매 데이터 읽기.
+      // 상위 scenarioOverride(메모리)가 있으면 그걸 우선, 없으면 API GET으로 기본값(git 커밋 JSON) 읽음.
       const scenarioRetail: Record<ScenarioKey, Record<SalesBrand, (number | null)[]>> = {
         base: { MLB: [], 'MLB KIDS': [], DISCOVERY: [] },
         positive: { MLB: [], 'MLB KIDS': [], DISCOVERY: [] },
         negative: { MLB: [], 'MLB KIDS': [], DISCOVERY: [] },
       };
 
-      const invRes = await fetch('/api/inventory/scenario-inventory', { cache: 'no-store' });
-      if (!invRes.ok) throw new Error('재고자산(sim) 시나리오 데이터가 없습니다. 재고자산(sim) 탭에서 "재계산/저장"을 먼저 실행해주세요.');
-      const invJson = await invRes.json() as {
+      type ScenarioInventoryApi = {
         retailHqMonthly?: Record<string, Record<string, (number | null)[]>>;
         closing?: Record<string, Record<string, number>>;
         error?: string;
       };
-      if (invJson.error) throw new Error(invJson.error);
+      let invJson: ScenarioInventoryApi;
+      if (scenarioOverride) {
+        invJson = {
+          retailHqMonthly: scenarioOverride.retailHqMonthly as Record<string, Record<string, (number | null)[]>>,
+          closing: scenarioOverride.closing as Record<string, Record<string, number>>,
+        };
+      } else {
+        const invRes = await fetch('/api/inventory/scenario-inventory', { cache: 'no-store' });
+        if (!invRes.ok) throw new Error('재고자산(sim) 시나리오 데이터가 없습니다. 재고자산(sim) 탭에서 "재계산/저장"을 먼저 실행해주세요.');
+        invJson = (await invRes.json()) as ScenarioInventoryApi;
+        if (invJson.error) throw new Error(invJson.error);
+      }
       if (!invJson.retailHqMonthly) throw new Error('시나리오 본사리테일 데이터가 없습니다. 재고자산(sim) 탭에서 "재계산/저장"을 다시 실행해주세요.');
 
       for (const scKey of SCENARIO_ORDER) {
@@ -2692,14 +2688,19 @@ export default function PLForecastTab() {
 
       // ─── 운전자본표 데이터 계산 ─────────────────────────────────────────────
       try {
-        const [invRes, wcRes] = await Promise.all([
-          fetch('/api/inventory/scenario-inventory'),
-          fetch('/api/pl-forecast/wc-forecast'),
-        ]);
-        const invJson = invRes.ok ? await invRes.json() : null;
+        // 재고 closing도 override 우선. override가 없을 때만 API GET으로 기본값 읽음.
+        const wcRes = await fetch('/api/pl-forecast/wc-forecast');
+        let invClosingRaw: Partial<Record<ScenarioKey, Partial<Record<SalesBrand, number>>>> = {};
+        if (scenarioOverride) {
+          invClosingRaw = scenarioOverride.closing;
+        } else {
+          const invRes = await fetch('/api/inventory/scenario-inventory');
+          const invJsonWc = invRes.ok ? await invRes.json() : null;
+          invClosingRaw = invJsonWc?.closing ?? {};
+        }
         const wcJson = wcRes.ok ? await wcRes.json() : null;
 
-        const invClosing: Partial<Record<ScenarioKey, Partial<Record<SalesBrand, number>>>> = invJson?.closing ?? {};
+        const invClosing: Partial<Record<ScenarioKey, Partial<Record<SalesBrand, number>>>> = invClosingRaw;
         const arBaseK = wcJson?.wc_ar != null ? wcJson.wc_ar / 1000 : null;
         const apBaseK = wcJson?.wc_ap != null ? wcJson.wc_ap / 1000 : null;
 
@@ -2854,7 +2855,7 @@ export default function PLForecastTab() {
             </div>
 
             <span className="font-bold text-red-600" style={{ fontSize: '20px' }}>
-              ※ 필수 방문순서: 재고자산(simu) 방문후 PL 참고해주세요
+              ※ 필수 방문순서: 재고자산(sim) 방문후 PL 참고해주세요
             </span>
 
             <div className="ml-auto flex items-center gap-2">
@@ -2864,13 +2865,6 @@ export default function PLForecastTab() {
                 className="flex items-center gap-1.5 rounded-full border border-violet-300 bg-violet-50 px-4 py-1.5 text-xs font-semibold text-violet-700 shadow-sm transition-colors hover:bg-violet-100"
               >
                 ⚖ 시나리오 비교
-              </button>
-              <button
-                type="button"
-                onClick={handleDownloadJson}
-                className="flex items-center gap-1 rounded-full border border-blue-200 bg-blue-50 px-3 py-1 text-xs font-medium text-blue-700 shadow-sm transition-colors hover:bg-blue-100"
-              >
-                ↓ {FORECAST_BRANDS.find((b) => b.id === activeBrand)?.label ?? '법인'} JSON
               </button>
             </div>
             <div className="rounded-full border border-slate-200 bg-white px-3 py-1 text-xs text-slate-500 shadow-sm">

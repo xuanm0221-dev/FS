@@ -18,10 +18,11 @@ import { TableRow, CreditData, CreditRecoveryData, TabType, ExecutiveSummaryData
 import type { CFExplanationNumbers } from '@/lib/cf-explanation-data';
 import InventoryDashboard from '@/components/inventory/InventoryDashboard';
 import PLForecastTab from '@/components/pl-forecast/PLForecastTab';
+import type { ScenarioInventoryPayload } from '@/components/pl-forecast/plForecastConfig';
 import PLCashFlowTab from '@/components/pl-forecast/PLCashFlowTab';
 
 export default function Home() {
-  const [activeTab, setActiveTab] = useState<number>(7);
+  const [activeTab, setActiveTab] = useState<number>(5);
   const [inventoryTabMounted, setInventoryTabMounted] = useState<boolean>(true);
   const [plYear, setPlYear] = useState<number>(2026);
   const [plBrand, setPlBrand] = useState<string | null>(null); // null=踰뺤씤, 'mlb', 'kids' ??
@@ -67,6 +68,10 @@ export default function Home() {
   const [bsRemarks, setBsRemarks] = useState<Map<string, string>>(new Map());
   const [wcRemarks, setWcRemarks] = useState<Map<string, string>>(new Map());
   const [wcRemarksAuto, setWcRemarksAuto] = useState<{ [key: string]: string } | null>(null);
+
+  // 재고자산(sim) "재계산/저장" 결과를 메모리로만 보관 (F5/탭 닫기 시 소멸 → 기본값 복귀).
+  // 서버·파일·KV 모두 사용하지 않는다. 사용자별 시뮬레이션 격리 + 다른 PC 영향 0.
+  const [scenarioOverride, setScenarioOverride] = useState<ScenarioInventoryPayload | null>(null);
 
   // 비고 데이터 로드 (초기상태 진입 시 API에서 로드)
   const loadRemarks = async (type: 'bs' | 'wc') => {
@@ -856,8 +861,8 @@ export default function Home() {
         )}
 
         {/* 재고자산 */}
-        {inventoryTabMounted && <div className={activeTab === 5 ? '' : 'hidden'}><InventoryDashboard /></div>}
-        <div className={activeTab === 6 ? '' : 'hidden'}><PLForecastTab /></div>
+        {inventoryTabMounted && <div className={activeTab === 5 ? '' : 'hidden'}><InventoryDashboard onScenarioRecalc={setScenarioOverride} /></div>}
+        <div className={activeTab === 6 ? '' : 'hidden'}><PLForecastTab scenarioOverride={scenarioOverride} /></div>
         {activeTab === 7 && <PLCashFlowTab />}
       </div>
     </main>

@@ -119,6 +119,15 @@ export const ROWS_BRAND: ForecastRowDef[] = ROWS_CORPORATE.filter(
 export type SalesBrand = 'MLB' | 'MLB KIDS' | 'DISCOVERY';
 export type ScenarioKey = 'negative' | 'base' | 'positive';
 
+// 재고자산(sim)에서 "재계산/저장"으로 확정한 시나리오 재고 페이로드
+// (메모리 공유용 — app/page.tsx가 state로 들고 InventoryDashboard ↔ PLForecastTab 사이를 잇는다)
+export type ScenarioInventoryPayload = {
+  closing: Record<ScenarioKey, Partial<Record<SalesBrand, number>>>;
+  retailHqMonthly: Record<ScenarioKey, Partial<Record<SalesBrand, (number | null)[]>>>;
+  savedAt: string;
+  version: string;
+};
+
 export interface ScenarioDef {
   key: ScenarioKey;
   label: string;

@@ -4,6 +4,9 @@ import path from 'path';
 
 export const runtime = 'nodejs';
 
+// 이 라우트는 "기본값(git에 커밋된 시나리오 재고)"만 서빙한다.
+// 재고자산(sim)의 "재계산/저장" 결과는 서버에 쓰지 않고 브라우저 메모리(app/page.tsx state)에만 올린다.
+// → 사용자별 시뮬레이션 격리, 다른 PC 영향 0, F5/탭 닫기 시 자동 복귀.
 const JSON_PATH = path.join(process.cwd(), '보조파일(simu)', 'scenario_inventory_closing.json');
 
 export async function GET() {
@@ -16,19 +19,5 @@ export async function GET() {
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     return NextResponse.json({ error: `읽기 실패: ${msg}` }, { status: 500 });
-  }
-}
-
-export async function POST(request: Request) {
-  if (process.env.NODE_ENV === 'production') {
-    return NextResponse.json({ error: '프로덕션 환경에서는 저장할 수 없습니다.' }, { status: 403 });
-  }
-  try {
-    const data = await request.json();
-    fs.writeFileSync(JSON_PATH, JSON.stringify(data, null, 2), 'utf-8');
-    return NextResponse.json({ ok: true });
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
-    return NextResponse.json({ error: `저장 실패: ${msg}` }, { status: 500 });
   }
 }

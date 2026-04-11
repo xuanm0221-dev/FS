@@ -82,6 +82,7 @@ interface Props {
   scenarioInvClosing?: Partial<Record<ScenarioKey, Partial<Record<SalesBrand, number>>>> | null;
   scenarioInvSavedAt?: string | null;
   onComputeScenarioInv?: () => void;
+  onOpenDriverModal?: () => void;
 }
 
 export default function InventoryFilterBar({
@@ -102,6 +103,7 @@ export default function InventoryFilterBar({
   scenarioInvClosing,
   scenarioInvSavedAt,
   onComputeScenarioInv,
+  onOpenDriverModal,
 }: Props) {
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
@@ -211,6 +213,21 @@ export default function InventoryFilterBar({
               )}
             </div>
           )
+        )}
+
+        {onOpenDriverModal && (
+          <button
+            type="button"
+            onClick={onOpenDriverModal}
+            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded border bg-gray-100 text-gray-600 border-gray-200 hover:bg-gray-200 hover:border-gray-300 transition-colors"
+            title="재고자산 주요지표 (계획·Rolling 비교) 보기"
+          >
+            <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.5" className="text-gray-400">
+              <rect x="1.5" y="1.5" width="9" height="9" rx="1" />
+              <path d="M1.5 4.5h9M4.5 1.5v9" />
+            </svg>
+            재고자산 주요지표
+          </button>
         )}
 
         <div

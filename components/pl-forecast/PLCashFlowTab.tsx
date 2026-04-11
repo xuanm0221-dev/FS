@@ -1267,7 +1267,7 @@ export default function PLCashFlowTab() {
           </button>
           <span className={`px-3 py-1 text-xs font-medium rounded-full ${loadStatusClassName}`}>{loadStatusLabel}</span>
           <span className="font-bold text-red-600" style={{ fontSize: '1.125rem' }}>
-            ※ 필수 방문순서: 재고자산(simu) → PL(simu) 순차적으로 방문후 데이터 참고해주세요
+            ※ 필수 방문순서: 재고자산(sim) → PL(sim) 순차적으로 방문후 데이터 참고해주세요
           </span>
         </div>
       </div>

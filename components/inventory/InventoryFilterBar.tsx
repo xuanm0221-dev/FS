@@ -259,7 +259,7 @@ export default function InventoryFilterBar({
 
         {/* 시나리오 재고 계산 상태 뱃지 */}
         {scenarioInvStatus && (
-          <div className="flex items-center gap-1.5">
+          <div className="flex flex-wrap items-center gap-1.5">
             <div className="h-4 w-px bg-gray-300 flex-shrink-0" />
             {SCENARIO_ORDER.map((scKey) => {
               const def = SCENARIO_DEFS[scKey];
@@ -312,6 +312,9 @@ export default function InventoryFilterBar({
               </svg>
               재계산·저장
             </button>
+            <span className="text-[11px] font-bold leading-snug text-red-600 max-w-xl pl-0.5">
+              성장률을 조정한 후 &quot;재계산·저장&quot; 버튼을 클릭하시면, 변경 내용이 시나리오(PL)에 반영됩니다.
+            </span>
           </div>
         )}
       </div>

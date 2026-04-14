@@ -2782,7 +2782,7 @@ export default function PLForecastTab({ scenarioOverride = null }: PLForecastTab
       brands: {
         corporate: { label: '법인', rows: buildRows(null) },
         mlb: { label: 'MLB', rows: buildRows('mlb') },
-        kids: { label: 'MLB KIDS', rows: buildRows('kids') },
+        kids: { label: 'KIDS', rows: buildRows('kids') },
         discovery: { label: 'DISCOVERY', rows: buildRows('discovery') },
         duvetica: { label: 'DUVETICA', rows: buildRows('duvetica') },
         supra: { label: 'SUPRA', rows: buildRows('supra') },

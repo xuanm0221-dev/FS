@@ -82,6 +82,7 @@ interface Props {
   scenarioInvClosing?: Partial<Record<ScenarioKey, Partial<Record<SalesBrand, number>>>> | null;
   scenarioInvSavedAt?: string | null;
   onComputeScenarioInv?: () => void;
+  onDownloadSnapshot?: () => Promise<void> | void;
   onOpenDriverModal?: () => void;
 }
 
@@ -103,8 +104,15 @@ export default function InventoryFilterBar({
   scenarioInvClosing,
   scenarioInvSavedAt,
   onComputeScenarioInv,
+  onDownloadSnapshot,
   onOpenDriverModal,
 }: Props) {
+  const [snapshotBusy, setSnapshotBusy] = useState(false);
+  const handleDownloadSnapshot = async () => {
+    if (!onDownloadSnapshot) return;
+    setSnapshotBusy(true);
+    try { await onDownloadSnapshot(); } finally { setSnapshotBusy(false); }
+  };
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
@@ -312,6 +320,26 @@ export default function InventoryFilterBar({
               </svg>
               재계산·저장
             </button>
+            {onDownloadSnapshot && (
+              <button
+                type="button"
+                onClick={handleDownloadSnapshot}
+                disabled={snapshotBusy}
+                className="flex items-center gap-1 rounded-full border border-amber-400 bg-amber-50 px-2.5 py-1 text-[11px] font-medium text-amber-700 shadow-sm hover:bg-amber-100 disabled:cursor-not-allowed disabled:opacity-40 transition-colors"
+                title="SCENARIO_DEFS 기본 성장률 기준으로 시나리오 전체를 계산해 scenario_inventory_closing.json 파일로 다운로드합니다. 다운로드 파일을 보조파일(simu)/scenario_inventory_closing.json 에 덮어써 커밋하면 외부 사용자의 기본 스냅샷이 갱신됩니다. (개발자 전용, 재계산·저장과 무관)"
+              >
+                {snapshotBusy ? (
+                  <svg className="animate-spin" width="10" height="10" viewBox="0 0 10 10" fill="none">
+                    <circle cx="5" cy="5" r="4" stroke="currentColor" strokeWidth="1.5" strokeDasharray="6 6" />
+                  </svg>
+                ) : (
+                  <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="1.5">
+                    <path d="M5 1v6M2 5l3 3 3-3M1 9h8" />
+                  </svg>
+                )}
+                {snapshotBusy ? '생성중…' : '기본 스냅샷 다운로드 (dev)'}
+              </button>
+            )}
             <span className="text-[11px] font-bold leading-snug text-red-600 max-w-xl pl-0.5">
               성장률을 조정한 후 &quot;재계산·저장&quot; 버튼을 클릭하시면, 변경 내용이 시나리오(PL)에 반영됩니다.
             </span>

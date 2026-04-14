@@ -1934,8 +1934,15 @@ export default function InventoryDashboard({ onScenarioRecalc }: InventoryDashbo
   }, [year, brand, monthlyDataByBrand, monthlyData, retailDataByBrand, retailData, shipmentDataByBrand, shipmentData, purchaseDataByBrand, purchaseData, accTargetWoiDealer, accTargetWoiHq, accHqHoldingWoi, otbData, hqSellOutPlan, annualShipmentPlan2026]);
 
   // 시나리오 재고 계산 함수 (버튼 클릭 시 실행)
-  const computeAndSaveScenarioInventory = useCallback(async () => {
-    if (!allBrandsBgLoaded || year !== 2026) return;
+  // 시나리오 재고·리테일 전체를 주어진 성장률로 계산하는 순수 계산 함수.
+  // - 재계산·저장: 현재 UI 성장률(effectiveScenarioGrowthRates)로 호출 → 메모리에 올림
+  // - 스냅샷 다운로드(dev): SCENARIO_DEFS 기본값으로 호출 → 파일로 다운로드
+  type ScenarioRates = Record<ScenarioKey, { dealer: Record<SalesBrand, number>; hq: Record<SalesBrand, number> }>;
+  const computeScenarioPayloadCore = useCallback(async (
+    rates: ScenarioRates,
+    onProgress?: (scKey: ScenarioKey, status: 'computing' | 'done' | 'error') => void,
+  ): Promise<ScenarioInventoryPayload | null> => {
+    if (!allBrandsBgLoaded || year !== 2026) return null;
 
     const allClosing: Record<ScenarioKey, Partial<Record<SalesBrand, number>>> = {
       negative: {}, base: {}, positive: {},
@@ -1948,9 +1955,7 @@ export default function InventoryDashboard({ onScenarioRecalc }: InventoryDashbo
     };
 
     for (const scKey of SCENARIO_ORDER) {
-      setScenarioInvStatus((prev) => ({ ...prev, [scKey]: 'computing' }));
-      const def = SCENARIO_DEFS[scKey];
-
+      onProgress?.(scKey, 'computing');
       try {
         await Promise.all(
           ANNUAL_PLAN_BRANDS.map(async (b) => {
@@ -1959,31 +1964,23 @@ export default function InventoryDashboard({ onScenarioRecalc }: InventoryDashbo
             const pData = purchaseDataByBrand[b];
             if (!mData || !sData) return;
 
-            let rData: RetailSalesResponse | null = null;
-            if (scKey === 'base') {
-              rData = retailDataByBrand[b] ?? null;
-            }
-            if (!rData) {
-              const rates = effectiveScenarioGrowthRates[scKey];
-              const params = new URLSearchParams({
-                year: '2026',
-                brand: b,
-                growthRate: String(rates.dealer[b as SalesBrand]),
-                growthRateHq: String(rates.hq[b as SalesBrand]),
-              });
-              const res = await fetch(`/api/inventory/retail-sales?${params}`, { cache: 'no-store' });
-              if (!res.ok) return;
-              const json = (await res.json()) as RetailSalesResponse & { error?: string };
-              if ((json as { error?: string }).error) return;
-              rData = json;
-            }
+            const r = rates[scKey];
+            const params = new URLSearchParams({
+              year: '2026',
+              brand: b,
+              growthRate: String(r.dealer[b as SalesBrand]),
+              growthRateHq: String(r.hq[b as SalesBrand]),
+            });
+            const res = await fetch(`/api/inventory/retail-sales?${params}`, { cache: 'no-store' });
+            if (!res.ok) return;
+            const rData = (await res.json()) as RetailSalesResponse & { error?: string };
+            if ((rData as { error?: string }).error) return;
 
-            // 본사/대리상 리테일 판매 월별 데이터 추출 → PL(sim) 시나리오에서 사용
-            const hqTotalRow = rData.hq?.rows?.find((r) => r.isTotal);
+            const hqTotalRow = rData.hq?.rows?.find((row) => row.isTotal);
             if (hqTotalRow?.monthly) {
               allRetailHqMonthly[scKey][b as SalesBrand] = hqTotalRow.monthly;
             }
-            const dealerTotalRow = rData.dealer?.rows?.find((r) => r.isTotal);
+            const dealerTotalRow = rData.dealer?.rows?.find((row) => row.isTotal);
             if (dealerTotalRow?.monthly) {
               allRetailDealerMonthly[scKey][b as SalesBrand] = dealerTotalRow.monthly;
             }
@@ -2007,35 +2004,59 @@ export default function InventoryDashboard({ onScenarioRecalc }: InventoryDashbo
             }
           }),
         );
-        setScenarioInvStatus((prev) => ({ ...prev, [scKey]: 'done' }));
+        onProgress?.(scKey, 'done');
       } catch {
-        setScenarioInvStatus((prev) => ({ ...prev, [scKey]: 'error' }));
+        onProgress?.(scKey, 'error');
       }
     }
 
-    setScenarioInvClosing(allClosing);
-
-    // 버전 해시 (동적 성장률 기반)
     const version = SCENARIO_ORDER.map((k) => {
-      const rates = effectiveScenarioGrowthRates[k];
-      return `${k}:d${ANNUAL_PLAN_BRANDS.map((b) => rates.dealer[b as SalesBrand]).join(',')}-h${ANNUAL_PLAN_BRANDS.map((b) => rates.hq[b as SalesBrand]).join(',')}`;
+      const r = rates[k];
+      return `${k}:d${ANNUAL_PLAN_BRANDS.map((b) => r.dealer[b as SalesBrand]).join(',')}-h${ANNUAL_PLAN_BRANDS.map((b) => r.hq[b as SalesBrand]).join(',')}`;
     }).join('|');
 
-    const savedAt = new Date().toISOString();
-    setScenarioInvSavedAt(savedAt);
-
-    // 시나리오 재고를 상위(app/page.tsx)의 메모리 state로 올려서 PL(sim)과 공유.
-    // 파일/서버 저장이 아니므로 F5·탭 닫기 시 자동 소멸 → 다른 사용자 / 새 세션은 기본값만 봄.
-    onScenarioRecalc?.({
+    return {
       closing: allClosing,
       retailHqMonthly: allRetailHqMonthly as ScenarioInventoryPayload['retailHqMonthly'],
       retailDealerMonthly: allRetailDealerMonthly as ScenarioInventoryPayload['retailDealerMonthly'],
-      savedAt,
+      savedAt: new Date().toISOString(),
       version,
+    };
+  }, [allBrandsBgLoaded, year, monthlyDataByBrand, shipmentDataByBrand, purchaseDataByBrand,
+      accTargetWoiDealer, accTargetWoiHq, accHqHoldingWoi, otbData, hqSellOutPlan, annualShipmentPlan2026]);
+
+  // 재계산·저장: 현재 UI 성장률로 계산 → 메모리(scenarioOverride)에 올림 (세션 한정 시뮬레이션)
+  const computeAndSaveScenarioInventory = useCallback(async () => {
+    const payload = await computeScenarioPayloadCore(effectiveScenarioGrowthRates, (scKey, status) => {
+      setScenarioInvStatus((prev) => ({ ...prev, [scKey]: status }));
     });
-  }, [allBrandsBgLoaded, year, monthlyDataByBrand, retailDataByBrand, shipmentDataByBrand, purchaseDataByBrand,
-      accTargetWoiDealer, accTargetWoiHq, accHqHoldingWoi, otbData, hqSellOutPlan, annualShipmentPlan2026,
-      effectiveScenarioGrowthRates, onScenarioRecalc]);
+    if (!payload) return;
+    setScenarioInvClosing(payload.closing);
+    setScenarioInvSavedAt(payload.savedAt);
+    onScenarioRecalc?.(payload);
+  }, [computeScenarioPayloadCore, effectiveScenarioGrowthRates, onScenarioRecalc]);
+
+  // 스냅샷 다운로드(dev): SCENARIO_DEFS 기본값으로 계산 → JSON 파일 다운로드.
+  // 메모리/상태에 영향 없음. 다운로드 파일을 보조파일(simu)/scenario_inventory_closing.json 에
+  // 덮어써 커밋하면 외부 사용자의 기본 스냅샷이 갱신됨.
+  const downloadDefaultSnapshot = useCallback(async () => {
+    const defaultRates: ScenarioRates = {
+      negative: { dealer: SCENARIO_DEFS.negative.dealerGrowthRate, hq: SCENARIO_DEFS.negative.hqGrowthRate },
+      base: { dealer: SCENARIO_DEFS.base.dealerGrowthRate, hq: SCENARIO_DEFS.base.hqGrowthRate },
+      positive: { dealer: SCENARIO_DEFS.positive.dealerGrowthRate, hq: SCENARIO_DEFS.positive.hqGrowthRate },
+    };
+    const payload = await computeScenarioPayloadCore(defaultRates);
+    if (!payload) return;
+    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'scenario_inventory_closing.json';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  }, [computeScenarioPayloadCore]);
 
   // 브랜드별 당년 top table (buildBrand2026TopTable 이후에 배치)
   const perBrandTopTable = useMemo<Partial<Record<AnnualPlanBrand, TopTablePair>>>(() => {
@@ -3408,6 +3429,7 @@ export default function InventoryDashboard({ onScenarioRecalc }: InventoryDashbo
         scenarioInvClosing={year === 2026 ? scenarioInvClosing : undefined}
         scenarioInvSavedAt={year === 2026 ? scenarioInvSavedAt : undefined}
         onComputeScenarioInv={year === 2026 && allBrandsBgLoaded ? computeAndSaveScenarioInventory : undefined}
+        onDownloadSnapshot={process.env.NODE_ENV === 'development' && year === 2026 && allBrandsBgLoaded ? downloadDefaultSnapshot : undefined}
         onOpenDriverModal={year === 2026 ? () => setDriverModalOpen(true) : undefined}
       />
 

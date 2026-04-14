@@ -45,7 +45,7 @@ interface SalesRowDef {
   leafKind?: SalesLeafKind;
 }
 
-const SALES_BRANDS: SalesBrand[] = ['MLB', 'MLB KIDS', 'DISCOVERY'];
+const SALES_BRANDS: SalesBrand[] = ['MLB', 'MLB KIDS', 'DISCOVERY', 'DUVETICA', 'SUPRA'];
 const DEALER_CLOTH_SEASONS: SalesSeason[] = ['당년S', '당년F', '1년차', '차기시즌'];
 const FIXED_COST_ACCOUNTS = new Set(['기타(직접비)', '대리상지원금', '감가상각비']);
 
@@ -95,6 +95,8 @@ const FORECAST_TO_SALES_BRAND: Record<ForecastLeafBrand, SalesBrand> = {
   mlb: 'MLB',
   kids: 'MLB KIDS',
   discovery: 'DISCOVERY',
+  duvetica: 'DUVETICA',
+  supra: 'SUPRA',
 };
 const INVENTORY_GROWTH_PARAMS_KEY = 'inventory_growth_params';
 const PL_TAG_COST_RATIO_KEY = 'pl_tag_cost_ratio_annual';
@@ -407,9 +409,9 @@ interface DealerAccSellInPayload {
 
 type ShipmentRateChannel = 'dealerCloth' | 'dealerAcc' | 'direct';
 const SHIPMENT_RATE_PERCENT_BY_CHANNEL: Record<ShipmentRateChannel, Record<SalesBrand, number>> = {
-  dealerCloth: { MLB: 42, 'MLB KIDS': 42, DISCOVERY: 45 },
-  dealerAcc: { MLB: 47, 'MLB KIDS': 42, DISCOVERY: 45 },
-  direct: { MLB: 90, 'MLB KIDS': 90, DISCOVERY: 90 },
+  dealerCloth: { MLB: 42, 'MLB KIDS': 42, DISCOVERY: 45, DUVETICA: 0, SUPRA: 0 },
+  dealerAcc: { MLB: 47, 'MLB KIDS': 42, DISCOVERY: 45, DUVETICA: 0, SUPRA: 0 },
+  direct: { MLB: 90, 'MLB KIDS': 90, DISCOVERY: 90, DUVETICA: 0, SUPRA: 0 },
 };
 
 const BRAND_SHIPMENT_RATE_ROWS: Array<{ category: '대리상(의류)' | '대리상(ACC)' | '직영'; rates: Record<SalesBrand, number> }> = [
@@ -524,6 +526,8 @@ function emptyMonthlyInputs(): MonthlyInputs {
     mlb: Object.fromEntries(Object.entries(base).map(([k, v]) => [k, [...v]])) as Record<string, (number | null)[]>,
     kids: Object.fromEntries(Object.entries(base).map(([k, v]) => [k, [...v]])) as Record<string, (number | null)[]>,
     discovery: Object.fromEntries(Object.entries(base).map(([k, v]) => [k, [...v]])) as Record<string, (number | null)[]>,
+    duvetica: Object.fromEntries(Object.entries(base).map(([k, v]) => [k, [...v]])) as Record<string, (number | null)[]>,
+    supra: Object.fromEntries(Object.entries(base).map(([k, v]) => [k, [...v]])) as Record<string, (number | null)[]>,
   };
 }
 
@@ -833,8 +837,8 @@ function distributeRemainingByPattern(
 const DEFAULT_GROWTH_PARAMS: InventoryGrowthParams = {
   growthRate: 5,
   growthRateHq: 17,
-  growthRateByBrand: { MLB: 5, 'MLB KIDS': -3, DISCOVERY: 300 },
-  growthRateHqByBrand: { MLB: 15, 'MLB KIDS': 8, DISCOVERY: 100 },
+  growthRateByBrand: { MLB: 5, 'MLB KIDS': -3, DISCOVERY: 300, DUVETICA: 0, SUPRA: 0 },
+  growthRateHqByBrand: { MLB: 15, 'MLB KIDS': 8, DISCOVERY: 100, DUVETICA: 0, SUPRA: 0 },
 };
 
 function readInventoryGrowthParams(): InventoryGrowthParams {
@@ -851,11 +855,15 @@ function readInventoryGrowthParams(): InventoryGrowthParams {
       MLB: typeof rawByBrand?.MLB === 'number' ? rawByBrand.MLB : 5,
       'MLB KIDS': typeof rawByBrand?.['MLB KIDS'] === 'number' ? rawByBrand['MLB KIDS'] : -3,
       DISCOVERY: typeof rawByBrand?.DISCOVERY === 'number' ? rawByBrand.DISCOVERY : 300,
+      DUVETICA: typeof rawByBrand?.DUVETICA === 'number' ? rawByBrand.DUVETICA : 0,
+      SUPRA: typeof rawByBrand?.SUPRA === 'number' ? rawByBrand.SUPRA : 0,
     };
     const growthRateHqByBrand: Record<SalesBrand, number> = {
       MLB: typeof rawHqByBrand?.MLB === 'number' ? rawHqByBrand.MLB : 15,
       'MLB KIDS': typeof rawHqByBrand?.['MLB KIDS'] === 'number' ? rawHqByBrand['MLB KIDS'] : 8,
       DISCOVERY: typeof rawHqByBrand?.DISCOVERY === 'number' ? rawHqByBrand.DISCOVERY : 100,
+      DUVETICA: typeof rawHqByBrand?.DUVETICA === 'number' ? rawHqByBrand.DUVETICA : 0,
+      SUPRA: typeof rawHqByBrand?.SUPRA === 'number' ? rawHqByBrand.SUPRA : 0,
     };
     return { growthRate, growthRateHq, growthRateByBrand, growthRateHqByBrand };
   } catch {
@@ -885,9 +893,21 @@ export default function PLForecastTab({ scenarioOverride = null }: PLForecastTab
     MLB: { dealer: new Array(12).fill(null), direct: new Array(12).fill(null) },
     'MLB KIDS': { dealer: new Array(12).fill(null), direct: new Array(12).fill(null) },
     DISCOVERY: { dealer: new Array(12).fill(null), direct: new Array(12).fill(null) },
+    DUVETICA: { dealer: new Array(12).fill(null), direct: new Array(12).fill(null) },
+    SUPRA: { dealer: new Array(12).fill(null), direct: new Array(12).fill(null) },
   });
   const [prevYearDiscountLoading, setPrevYearDiscountLoading] = useState<boolean>(false);
   const [prevYearDiscountError, setPrevYearDiscountError] = useState<string | null>(null);
+  const [valuationLossSectionOpen, setValuationLossSectionOpen] = useState<boolean>(false);
+  const [valuationLossByBrand, setValuationLossByBrand] = useState<Record<SalesBrand, (number | null)[]>>({
+    MLB: new Array(12).fill(null),
+    'MLB KIDS': new Array(12).fill(null),
+    DISCOVERY: new Array(12).fill(null),
+    DUVETICA: new Array(12).fill(null),
+    SUPRA: new Array(12).fill(null),
+  });
+  const [valuationLossLoading, setValuationLossLoading] = useState<boolean>(false);
+  const [valuationLossError, setValuationLossError] = useState<string | null>(null);
   const [salesCollapsed, setSalesCollapsed] = useState<Set<string>>(new Set());
   const [otbLoading, setOtbLoading] = useState<boolean>(false);
   const [otbError, setOtbError] = useState<string | null>(null);
@@ -906,11 +926,15 @@ export default function PLForecastTab({ scenarioOverride = null }: PLForecastTab
     MLB: new Array(12).fill(null),
     'MLB KIDS': new Array(12).fill(null),
     DISCOVERY: new Array(12).fill(null),
+    DUVETICA: new Array(12).fill(null),
+    SUPRA: new Array(12).fill(null),
   });
   const [directRetailByBrand, setDirectRetailByBrand] = useState<Record<SalesBrand, (number | null)[]>>({
     MLB: new Array(12).fill(null),
     'MLB KIDS': new Array(12).fill(null),
     DISCOVERY: new Array(12).fill(null),
+    DUVETICA: new Array(12).fill(null),
+    SUPRA: new Array(12).fill(null),
   });
   const [shipmentProgressLoading, setShipmentProgressLoading] = useState<boolean>(false);
   const [shipmentProgressError, setShipmentProgressError] = useState<string | null>(null);
@@ -919,6 +943,8 @@ export default function PLForecastTab({ scenarioOverride = null }: PLForecastTab
     MLB: 0,
     'MLB KIDS': 0,
     DISCOVERY: 0,
+    DUVETICA: 0,
+    SUPRA: 0,
   });
   const [accRatioLoading, setAccRatioLoading] = useState<boolean>(false);
   const [accRatioError, setAccRatioError] = useState<string | null>(null);
@@ -936,6 +962,8 @@ export default function PLForecastTab({ scenarioOverride = null }: PLForecastTab
     MLB: emptyBrandActual(),
     'MLB KIDS': emptyBrandActual(),
     DISCOVERY: emptyBrandActual(),
+    DUVETICA: emptyBrandActual(),
+    SUPRA: emptyBrandActual(),
   });
   const [salesSupportActualLoading, setSalesSupportActualLoading] = useState<boolean>(false);
   const [salesSupportActualError, setSalesSupportActualError] = useState<string | null>(null);
@@ -951,6 +979,8 @@ export default function PLForecastTab({ scenarioOverride = null }: PLForecastTab
     MLB: emptySalesSupportActual(),
     'MLB KIDS': emptySalesSupportActual(),
     DISCOVERY: emptySalesSupportActual(),
+    DUVETICA: emptySalesSupportActual(),
+    SUPRA: emptySalesSupportActual(),
   });
   const [opexForecastLoading, setOpexForecastLoading] = useState<boolean>(false);
   const [opexForecastError, setOpexForecastError] = useState<string | null>(null);
@@ -958,6 +988,8 @@ export default function PLForecastTab({ scenarioOverride = null }: PLForecastTab
     MLB: {},
     'MLB KIDS': {},
     DISCOVERY: {},
+    DUVETICA: {},
+    SUPRA: {},
   });
   // 재무조정 데이터 (FY26 + FY25)
   const [financialAdjust26, setFinancialAdjust26] = useState<Record<string, (number | null)[]>>({});
@@ -969,6 +1001,8 @@ export default function PLForecastTab({ scenarioOverride = null }: PLForecastTab
     MLB: {},
     'MLB KIDS': {},
     DISCOVERY: {},
+    DUVETICA: {},
+    SUPRA: {},
   });
   const [tagCostRatioLoading, setTagCostRatioLoading] = useState<boolean>(false);
   const [tagCostRatioError, setTagCostRatioError] = useState<string | null>(null);
@@ -976,6 +1010,8 @@ export default function PLForecastTab({ scenarioOverride = null }: PLForecastTab
     MLB: new Array(12).fill(null),
     'MLB KIDS': new Array(12).fill(null),
     DISCOVERY: new Array(12).fill(null),
+    DUVETICA: new Array(12).fill(null),
+    SUPRA: new Array(12).fill(null),
   });
 
   // ─── 시나리오 모달 상태 ───────────────────────────────────────────────────────
@@ -1192,18 +1228,69 @@ export default function PLForecastTab({ scenarioOverride = null }: PLForecastTab
       setBrandActualLoading(true);
       setBrandActualError(null);
       try {
-        const res = await fetch('/api/pl-forecast/brand-actual?year=2026', { cache: 'no-store' });
-        const json = (await res.json()) as BrandActualApiResponse;
-        if (!res.ok) throw new Error(json?.error || '브랜드 실적 데이터를 불러오지 못했습니다.');
+        const [resActual, resPlan] = await Promise.all([
+          fetch('/api/pl-forecast/brand-actual?year=2026', { cache: 'no-store' }),
+          fetch('/api/pl-forecast/dv-sp-plan', { cache: 'no-store' }),
+        ]);
+        const json = (await resActual.json()) as BrandActualApiResponse;
+        if (!resActual.ok) throw new Error(json?.error || '브랜드 실적 데이터를 불러오지 못했습니다.');
         if (!mounted) return;
-        setBrandActualAvailableMonths(json.availableMonths ?? []);
-        setBrandActualByBrand(
-          json.brands ?? {
-            MLB: emptyBrandActual(),
-            'MLB KIDS': emptyBrandActual(),
-            DISCOVERY: emptyBrandActual(),
-          },
-        );
+        const availableMonths = json.availableMonths ?? [];
+        const latest = availableMonths.length === 0 ? 0 : Math.max(...availableMonths);
+        setBrandActualAvailableMonths(availableMonths);
+
+        const baseBrands: Record<SalesBrand, BrandActualData> = json.brands ?? {
+          MLB: emptyBrandActual(),
+          'MLB KIDS': emptyBrandActual(),
+          DISCOVERY: emptyBrandActual(),
+          DUVETICA: emptyBrandActual(),
+          SUPRA: emptyBrandActual(),
+        };
+
+        // DV/SP 계획 CSV 병합 — 실적월 이후만, 실적 우선
+        if (resPlan.ok) {
+          const planJson = await resPlan.json() as { brands?: Record<'DUVETICA' | 'SUPRA', BrandActualData> };
+          const mergeSeries = (actual: (number | null)[], plan: (number | null)[]) => {
+            const out = [...actual];
+            for (let i = 0; i < 12; i++) {
+              if (i + 1 <= latest) continue;
+              if (out[i] == null && plan[i] != null) out[i] = plan[i];
+            }
+            return out;
+          };
+          (['DUVETICA', 'SUPRA'] as const).forEach((brand) => {
+            const plan = planJson.brands?.[brand];
+            if (!plan) return;
+            const cur = baseBrands[brand] ?? emptyBrandActual();
+            baseBrands[brand] = {
+              tag: {
+                dealer: mergeSeries(cur.tag.dealer, plan.tag.dealer),
+                direct: mergeSeries(cur.tag.direct, plan.tag.direct),
+                dealerCloth: mergeSeries(cur.tag.dealerCloth, plan.tag.dealerCloth),
+                dealerAcc: mergeSeries(cur.tag.dealerAcc, plan.tag.dealerAcc),
+              },
+              sales: {
+                dealer: mergeSeries(cur.sales.dealer, plan.sales.dealer),
+                direct: mergeSeries(cur.sales.direct, plan.sales.direct),
+                dealerCloth: mergeSeries(cur.sales.dealerCloth, plan.sales.dealerCloth),
+                dealerAcc: mergeSeries(cur.sales.dealerAcc, plan.sales.dealerAcc),
+              },
+              retail: {
+                dealer: mergeSeries(cur.retail.dealer, plan.retail.dealer),
+                direct: mergeSeries(cur.retail.direct, plan.retail.direct),
+              },
+              accounts: (() => {
+                const merged: Record<string, (number | null)[]> = { ...cur.accounts };
+                for (const [acc, series] of Object.entries(plan.accounts)) {
+                  merged[acc] = mergeSeries(cur.accounts[acc] ?? new Array(12).fill(null), series);
+                }
+                return merged;
+              })(),
+            };
+          });
+        }
+
+        setBrandActualByBrand(baseBrands);
       } catch (err) {
         if (mounted) {
           setBrandActualAvailableMonths([]);
@@ -1326,6 +1413,28 @@ export default function PLForecastTab({ scenarioOverride = null }: PLForecastTab
     return () => { mounted = false; };
   }, []);
 
+  // 평가감 데이터 로드
+  useEffect(() => {
+    let mounted = true;
+    const fetchValuationLoss = async () => {
+      setValuationLossLoading(true);
+      setValuationLossError(null);
+      try {
+        const res = await fetch('/api/pl-forecast/valuation-loss', { cache: 'no-store' });
+        const json = await res.json();
+        if (!res.ok) throw new Error(json?.error || '평가감 데이터를 불러오지 못했습니다.');
+        if (!mounted) return;
+        if (json.brands) setValuationLossByBrand(json.brands);
+      } catch (err) {
+        if (mounted) setValuationLossError(err instanceof Error ? err.message : '평가감 데이터를 불러오지 못했습니다.');
+      } finally {
+        if (mounted) setValuationLossLoading(false);
+      }
+    };
+    fetchValuationLoss();
+    return () => { mounted = false; };
+  }, []);
+
   useEffect(() => {
     let mounted = true;
     const fetchDirectExpenseRatio = async () => {
@@ -1422,6 +1531,10 @@ export default function PLForecastTab({ scenarioOverride = null }: PLForecastTab
       try {
         const entries = await Promise.all(
           SALES_BRANDS.map(async (brand) => {
+            // DUVETICA/SUPRA: 계산 없이 CSV 값만 사용 → 리테일 예측 API 스킵
+            if (brand === 'DUVETICA' || brand === 'SUPRA') {
+              return [brand, new Array(12).fill(null), new Array(12).fill(null)] as const;
+            }
             const params = new URLSearchParams({
               year: '2026',
               brand,
@@ -1446,11 +1559,15 @@ export default function PLForecastTab({ scenarioOverride = null }: PLForecastTab
             MLB: new Array(12).fill(null),
             'MLB KIDS': new Array(12).fill(null),
             DISCOVERY: new Array(12).fill(null),
+            DUVETICA: new Array(12).fill(null),
+            SUPRA: new Array(12).fill(null),
           };
           const nextDealer: Record<SalesBrand, (number | null)[]> = {
             MLB: new Array(12).fill(null),
             'MLB KIDS': new Array(12).fill(null),
             DISCOVERY: new Array(12).fill(null),
+            DUVETICA: new Array(12).fill(null),
+            SUPRA: new Array(12).fill(null),
           };
           for (const [brand, hqMonthly, dealerMonthly] of entries) {
             nextHq[brand] = hqMonthly;
@@ -1481,6 +1598,8 @@ export default function PLForecastTab({ scenarioOverride = null }: PLForecastTab
         MLB: (Number(values.MLB) || 0) * 1000,
         'MLB KIDS': (Number(values['MLB KIDS']) || 0) * 1000,
         DISCOVERY: (Number(values.DISCOVERY) || 0) * 1000,
+        DUVETICA: (Number(values.DUVETICA) || 0) * 1000,
+        SUPRA: (Number(values.SUPRA) || 0) * 1000,
       });
     };
 
@@ -1534,6 +1653,8 @@ export default function PLForecastTab({ scenarioOverride = null }: PLForecastTab
       mlb: deriveCalculated(monthlyInputs.mlb, ANNUAL_2025_RAW_BY_BRAND.mlb, financialAdjust26, financialAdjust25),
       kids: deriveCalculated(monthlyInputs.kids, ANNUAL_2025_RAW_BY_BRAND.kids),
       discovery: deriveCalculated(monthlyInputs.discovery, ANNUAL_2025_RAW_BY_BRAND.discovery),
+      duvetica: deriveCalculated(monthlyInputs.duvetica, ANNUAL_2025_RAW_BY_BRAND.duvetica),
+      supra: deriveCalculated(monthlyInputs.supra, ANNUAL_2025_RAW_BY_BRAND.supra),
     };
     return result;
   }, [monthlyInputs, financialAdjust26, financialAdjust25]);
@@ -1545,8 +1666,10 @@ export default function PLForecastTab({ scenarioOverride = null }: PLForecastTab
         const v1 = monthlyInputs.mlb[account]?.[idx] ?? null;
         const v2 = monthlyInputs.kids[account]?.[idx] ?? null;
         const v3 = monthlyInputs.discovery[account]?.[idx] ?? null;
-        if (v1 === null && v2 === null && v3 === null) return null;
-        return (v1 ?? 0) + (v2 ?? 0) + (v3 ?? 0);
+        const v4 = monthlyInputs.duvetica[account]?.[idx] ?? null;
+        const v5 = monthlyInputs.supra[account]?.[idx] ?? null;
+        if (v1 === null && v2 === null && v3 === null && v4 === null && v5 === null) return null;
+        return (v1 ?? 0) + (v2 ?? 0) + (v3 ?? 0) + (v4 ?? 0) + (v5 ?? 0);
       });
     }
 
@@ -1555,7 +1678,9 @@ export default function PLForecastTab({ scenarioOverride = null }: PLForecastTab
       annualRaw[account] =
         (ANNUAL_2025_RAW_BY_BRAND.mlb[account] ?? 0) +
         (ANNUAL_2025_RAW_BY_BRAND.kids[account] ?? 0) +
-        (ANNUAL_2025_RAW_BY_BRAND.discovery[account] ?? 0);
+        (ANNUAL_2025_RAW_BY_BRAND.discovery[account] ?? 0) +
+        (ANNUAL_2025_RAW_BY_BRAND.duvetica[account] ?? 0) +
+        (ANNUAL_2025_RAW_BY_BRAND.supra[account] ?? 0);
     }
 
     return deriveCalculated(corporateRawMonthly, annualRaw, financialAdjust26, financialAdjust25);
@@ -1839,6 +1964,8 @@ export default function PLForecastTab({ scenarioOverride = null }: PLForecastTab
       MLB: { currS: 0, currF: 0, year1: 0, next: 0, total: 0 },
       'MLB KIDS': { currS: 0, currF: 0, year1: 0, next: 0, total: 0 },
       DISCOVERY: { currS: 0, currF: 0, year1: 0, next: 0, total: 0 },
+      DUVETICA: { currS: 0, currF: 0, year1: 0, next: 0, total: 0 },
+      SUPRA: { currS: 0, currF: 0, year1: 0, next: 0, total: 0 },
     };
 
     for (const brand of SALES_BRANDS) {
@@ -1856,6 +1983,8 @@ export default function PLForecastTab({ scenarioOverride = null }: PLForecastTab
       MLB: { 당년S: new Array(12).fill(0), 당년F: new Array(12).fill(0), '1년차': new Array(12).fill(0), 차기시즌: new Array(12).fill(0) },
       'MLB KIDS': { 당년S: new Array(12).fill(0), 당년F: new Array(12).fill(0), '1년차': new Array(12).fill(0), 차기시즌: new Array(12).fill(0) },
       DISCOVERY: { 당년S: new Array(12).fill(0), 당년F: new Array(12).fill(0), '1년차': new Array(12).fill(0), 차기시즌: new Array(12).fill(0) },
+      DUVETICA: { 당년S: new Array(12).fill(0), 당년F: new Array(12).fill(0), '1년차': new Array(12).fill(0), 차기시즌: new Array(12).fill(0) },
+      SUPRA: { 당년S: new Array(12).fill(0), 당년F: new Array(12).fill(0), '1년차': new Array(12).fill(0), 차기시즌: new Array(12).fill(0) },
     };
 
     const progressMap = new Map<string, ShipmentProgressRow>();
@@ -1895,6 +2024,8 @@ export default function PLForecastTab({ scenarioOverride = null }: PLForecastTab
       MLB: { 당년S: new Array(12).fill(0), 당년F: new Array(12).fill(0), '1년차': new Array(12).fill(0), 차기시즌: new Array(12).fill(0) },
       'MLB KIDS': { 당년S: new Array(12).fill(0), 당년F: new Array(12).fill(0), '1년차': new Array(12).fill(0), 차기시즌: new Array(12).fill(0) },
       DISCOVERY: { 당년S: new Array(12).fill(0), 당년F: new Array(12).fill(0), '1년차': new Array(12).fill(0), 차기시즌: new Array(12).fill(0) },
+      DUVETICA: { 당년S: new Array(12).fill(0), 당년F: new Array(12).fill(0), '1년차': new Array(12).fill(0), 차기시즌: new Array(12).fill(0) },
+      SUPRA: { 당년S: new Array(12).fill(0), 당년F: new Array(12).fill(0), '1년차': new Array(12).fill(0), 차기시즌: new Array(12).fill(0) },
     };
 
     for (const brand of SALES_BRANDS) {
@@ -1952,6 +2083,8 @@ export default function PLForecastTab({ scenarioOverride = null }: PLForecastTab
       MLB: new Array(12).fill(null),
       'MLB KIDS': new Array(12).fill(null),
       DISCOVERY: new Array(12).fill(null),
+      DUVETICA: new Array(12).fill(null),
+      SUPRA: new Array(12).fill(null),
     };
     for (const row of accRatioRows) {
       map[row.brand] = row.monthly;
@@ -2056,6 +2189,8 @@ export default function PLForecastTab({ scenarioOverride = null }: PLForecastTab
       MLB: { dealerCloth: buildEmpty(), dealerAcc: buildEmpty(), dealer: buildEmpty(), direct: buildEmpty() },
       'MLB KIDS': { dealerCloth: buildEmpty(), dealerAcc: buildEmpty(), dealer: buildEmpty(), direct: buildEmpty() },
       DISCOVERY: { dealerCloth: buildEmpty(), dealerAcc: buildEmpty(), dealer: buildEmpty(), direct: buildEmpty() },
+      DUVETICA: { dealerCloth: buildEmpty(), dealerAcc: buildEmpty(), dealer: buildEmpty(), direct: buildEmpty() },
+      SUPRA: { dealerCloth: buildEmpty(), dealerAcc: buildEmpty(), dealer: buildEmpty(), direct: buildEmpty() },
     };
     for (const brand of SALES_BRANDS) {
       const plannedDealerCloth = salesDerived[`dealerCloth:${brand}`]?.monthly ?? buildEmpty();
@@ -2118,26 +2253,17 @@ export default function PLForecastTab({ scenarioOverride = null }: PLForecastTab
   }, [salesDerived, brandActualByBrand, salesSupportActualByBrand, salesSupportActualAvailableMonths]);
 
   const corporateSalesChannel = useMemo(() => {
-    return {
-      dealerCloth: sumSeries(
-        sumSeries(salesChannelByBrand.MLB.dealerCloth, salesChannelByBrand['MLB KIDS'].dealerCloth),
-        salesChannelByBrand.DISCOVERY.dealerCloth,
-      ),
-      dealerAcc: sumSeries(
-        sumSeries(salesChannelByBrand.MLB.dealerAcc, salesChannelByBrand['MLB KIDS'].dealerAcc),
-        salesChannelByBrand.DISCOVERY.dealerAcc,
-      ),
-      dealer: sumSeries(sumSeries(salesChannelByBrand.MLB.dealer, salesChannelByBrand['MLB KIDS'].dealer), salesChannelByBrand.DISCOVERY.dealer),
-      direct: sumSeries(sumSeries(salesChannelByBrand.MLB.direct, salesChannelByBrand['MLB KIDS'].direct), salesChannelByBrand.DISCOVERY.direct),
-    };
+    const sumAll = (key: 'dealerCloth' | 'dealerAcc' | 'dealer' | 'direct') =>
+      SALES_BRANDS.reduce<(number | null)[]>((acc, b) => sumSeries(acc, salesChannelByBrand[b][key]), new Array(12).fill(null));
+    return { dealerCloth: sumAll('dealerCloth'), dealerAcc: sumAll('dealerAcc'), dealer: sumAll('dealer'), direct: sumAll('direct') };
   }, [salesChannelByBrand]);
 
   const tagSalesMonthlyByBrand = useMemo(() => {
-    return {
-      MLB: sumSeries(salesChannelByBrand.MLB.dealer, salesChannelByBrand.MLB.direct),
-      'MLB KIDS': sumSeries(salesChannelByBrand['MLB KIDS'].dealer, salesChannelByBrand['MLB KIDS'].direct),
-      DISCOVERY: sumSeries(salesChannelByBrand.DISCOVERY.dealer, salesChannelByBrand.DISCOVERY.direct),
-    } as Record<SalesBrand, (number | null)[]>;
+    const out = {} as Record<SalesBrand, (number | null)[]>;
+    for (const b of SALES_BRANDS) {
+      out[b] = sumSeries(salesChannelByBrand[b].dealer, salesChannelByBrand[b].direct);
+    }
+    return out;
   }, [salesChannelByBrand]);
 
   useEffect(() => {
@@ -2171,7 +2297,7 @@ export default function PLForecastTab({ scenarioOverride = null }: PLForecastTab
   }, [calculatedByBrand, tagSalesMonthlyByBrand]);
 
   const corporateTagSalesMonthly = useMemo(() => {
-    return sumSeries(sumSeries(tagSalesMonthlyByBrand.MLB, tagSalesMonthlyByBrand['MLB KIDS']), tagSalesMonthlyByBrand.DISCOVERY);
+    return SALES_BRANDS.reduce<(number | null)[]>((acc, b) => sumSeries(acc, tagSalesMonthlyByBrand[b]), new Array(12).fill(null));
   }, [tagSalesMonthlyByBrand]);
 
   const salesActualByBrand = useMemo(() => {
@@ -2180,6 +2306,8 @@ export default function PLForecastTab({ scenarioOverride = null }: PLForecastTab
       MLB: { dealerCloth: buildEmpty(), dealerAcc: buildEmpty(), dealer: buildEmpty(), direct: buildEmpty(), total: buildEmpty() },
       'MLB KIDS': { dealerCloth: buildEmpty(), dealerAcc: buildEmpty(), dealer: buildEmpty(), direct: buildEmpty(), total: buildEmpty() },
       DISCOVERY: { dealerCloth: buildEmpty(), dealerAcc: buildEmpty(), dealer: buildEmpty(), direct: buildEmpty(), total: buildEmpty() },
+      DUVETICA: { dealerCloth: buildEmpty(), dealerAcc: buildEmpty(), dealer: buildEmpty(), direct: buildEmpty(), total: buildEmpty() },
+      SUPRA: { dealerCloth: buildEmpty(), dealerAcc: buildEmpty(), dealer: buildEmpty(), direct: buildEmpty(), total: buildEmpty() },
     };
     for (const brand of SALES_BRANDS) {
       const plannedDealerCloth = applyRate(salesChannelByBrand[brand].dealerCloth, SHIPMENT_RATE_PERCENT_BY_CHANNEL.dealerCloth[brand]);
@@ -2224,19 +2352,9 @@ export default function PLForecastTab({ scenarioOverride = null }: PLForecastTab
   }, [salesChannelByBrand, brandActualByBrand]);
 
   const corporateActualSalesChannel = useMemo(() => {
-    return {
-      dealerCloth: sumSeries(
-        sumSeries(salesActualByBrand.MLB.dealerCloth, salesActualByBrand['MLB KIDS'].dealerCloth),
-        salesActualByBrand.DISCOVERY.dealerCloth,
-      ),
-      dealerAcc: sumSeries(
-        sumSeries(salesActualByBrand.MLB.dealerAcc, salesActualByBrand['MLB KIDS'].dealerAcc),
-        salesActualByBrand.DISCOVERY.dealerAcc,
-      ),
-      dealer: sumSeries(sumSeries(salesActualByBrand.MLB.dealer, salesActualByBrand['MLB KIDS'].dealer), salesActualByBrand.DISCOVERY.dealer),
-      direct: sumSeries(sumSeries(salesActualByBrand.MLB.direct, salesActualByBrand['MLB KIDS'].direct), salesActualByBrand.DISCOVERY.direct),
-      total: sumSeries(sumSeries(salesActualByBrand.MLB.total, salesActualByBrand['MLB KIDS'].total), salesActualByBrand.DISCOVERY.total),
-    };
+    const sumAll = (key: 'dealerCloth' | 'dealerAcc' | 'dealer' | 'direct' | 'total') =>
+      SALES_BRANDS.reduce<(number | null)[]>((acc, b) => sumSeries(acc, salesActualByBrand[b][key]), new Array(12).fill(null));
+    return { dealerCloth: sumAll('dealerCloth'), dealerAcc: sumAll('dealerAcc'), dealer: sumAll('dealer'), direct: sumAll('direct'), total: sumAll('total') };
   }, [salesActualByBrand]);
 
   // 리테일매출: 실적 CSV에서만 가져옴 (계획 없음)
@@ -2245,8 +2363,10 @@ export default function PLForecastTab({ scenarioOverride = null }: PLForecastTab
       MLB: { dealer: new Array(12).fill(null), direct: new Array(12).fill(null), total: new Array(12).fill(null) },
       'MLB KIDS': { dealer: new Array(12).fill(null), direct: new Array(12).fill(null), total: new Array(12).fill(null) },
       DISCOVERY: { dealer: new Array(12).fill(null), direct: new Array(12).fill(null), total: new Array(12).fill(null) },
+      DUVETICA: { dealer: new Array(12).fill(null), direct: new Array(12).fill(null), total: new Array(12).fill(null) },
+      SUPRA: { dealer: new Array(12).fill(null), direct: new Array(12).fill(null), total: new Array(12).fill(null) },
     };
-    for (const brand of (['MLB', 'MLB KIDS', 'DISCOVERY'] as SalesBrand[])) {
+    for (const brand of SALES_BRANDS) {
       const actualDealer = brandActualByBrand[brand]?.retail?.dealer ?? new Array(12).fill(null);
       const actualDirect = brandActualByBrand[brand]?.retail?.direct ?? new Array(12).fill(null);
       const tagDealer = dealerTagRetailByBrand[brand] ?? new Array(12).fill(null);
@@ -2270,17 +2390,19 @@ export default function PLForecastTab({ scenarioOverride = null }: PLForecastTab
     return result;
   }, [brandActualByBrand, dealerTagRetailByBrand, directRetailByBrand, prevYearDiscountByBrand]);
 
-  const corporateRetail = useMemo(() => ({
-    dealer: sumSeries(sumSeries(retailByBrand.MLB.dealer, retailByBrand['MLB KIDS'].dealer), retailByBrand.DISCOVERY.dealer),
-    direct: sumSeries(sumSeries(retailByBrand.MLB.direct, retailByBrand['MLB KIDS'].direct), retailByBrand.DISCOVERY.direct),
-    total: sumSeries(sumSeries(retailByBrand.MLB.total, retailByBrand['MLB KIDS'].total), retailByBrand.DISCOVERY.total),
-  }), [retailByBrand]);
+  const corporateRetail = useMemo(() => {
+    const sumAll = (key: 'dealer' | 'direct' | 'total') =>
+      SALES_BRANDS.reduce<(number | null)[]>((acc, b) => sumSeries(acc, retailByBrand[b][key]), new Array(12).fill(null));
+    return { dealer: sumAll('dealer'), direct: sumAll('direct'), total: sumAll('total') };
+  }, [retailByBrand]);
 
   // 2025년 연간 리테일매출 (하드코딩, K 단위 → 원 단위 *1000)
   const RETAIL_ANNUAL_2025: Record<SalesBrand, { dealer: number; direct: number }> = {
     MLB: { dealer: 7281233.351 * 1000, direct: 1092087.687 * 1000 },
     'MLB KIDS': { dealer: 291298.21 * 1000, direct: 109701.65 * 1000 },
     DISCOVERY: { dealer: 31224.81 * 1000, direct: 24029.47 * 1000 },
+    DUVETICA: { dealer: 518 * 1000, direct: 13038 * 1000 },
+    SUPRA: { dealer: 361 * 1000, direct: 5621 * 1000 },
   };
 
   const latestActualMonth = useMemo(() => {
@@ -2295,6 +2417,8 @@ export default function PLForecastTab({ scenarioOverride = null }: PLForecastTab
         mlb: { ...prev.mlb },
         kids: { ...prev.kids },
         discovery: { ...prev.discovery },
+        duvetica: { ...prev.duvetica },
+        supra: { ...prev.supra },
       };
 
       (Object.entries(FORECAST_TO_SALES_BRAND) as [ForecastLeafBrand, SalesBrand][]).forEach(([forecastBrand, salesBrand]) => {
@@ -2409,11 +2533,30 @@ export default function PLForecastTab({ scenarioOverride = null }: PLForecastTab
             changed = true;
           }
         }
+
+        const valuationSeries = valuationLossByBrand[salesBrand] ?? new Array(12).fill(null);
+        const currentEval = next[forecastBrand]['평가감'] ?? new Array(12).fill(null);
+        const mergedEval = [...currentEval];
+        let evalChanged = false;
+        for (let i = 0; i < 12; i += 1) {
+          if (i + 1 <= latestActualMonth) continue;
+          if (accountOverrides['평가감']?.[i] !== null && accountOverrides['평가감']?.[i] !== undefined) continue;
+          const raw = valuationSeries[i] ?? null;
+          const v = raw === null ? null : raw * 1000;
+          if ((mergedEval[i] ?? null) !== v) {
+            mergedEval[i] = v;
+            evalChanged = true;
+          }
+        }
+        if (evalChanged) {
+          next[forecastBrand]['평가감'] = mergedEval;
+          changed = true;
+        }
       });
 
       return changed ? next : prev;
     });
-  }, [tagSalesMonthlyByBrand, salesActualByBrand, brandActualByBrand, directExpenseRatioByBrand, latestActualMonth, opexForecastByBrand, tagCostRatioByBrand]);
+  }, [tagSalesMonthlyByBrand, salesActualByBrand, brandActualByBrand, directExpenseRatioByBrand, latestActualMonth, opexForecastByBrand, tagCostRatioByBrand, valuationLossByBrand]);
 
   const visibleSalesRows = useMemo(() => {
     return salesRows.filter((row) => {
@@ -2641,6 +2784,8 @@ export default function PLForecastTab({ scenarioOverride = null }: PLForecastTab
         mlb: { label: 'MLB', rows: buildRows('mlb') },
         kids: { label: 'MLB KIDS', rows: buildRows('kids') },
         discovery: { label: 'DISCOVERY', rows: buildRows('discovery') },
+        duvetica: { label: 'DUVETICA', rows: buildRows('duvetica') },
+        supra: { label: 'SUPRA', rows: buildRows('supra') },
       },
     };
     const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
@@ -2669,14 +2814,14 @@ export default function PLForecastTab({ scenarioOverride = null }: PLForecastTab
       // 재고자산(sim)에서 "재계산/저장"으로 확정한 본사리테일 판매 데이터 읽기.
       // 상위 scenarioOverride(메모리)가 있으면 그걸 우선, 없으면 API GET으로 기본값(git 커밋 JSON) 읽음.
       const scenarioRetailHq: Record<ScenarioKey, Record<SalesBrand, (number | null)[]>> = {
-        base: { MLB: [], 'MLB KIDS': [], DISCOVERY: [] },
-        positive: { MLB: [], 'MLB KIDS': [], DISCOVERY: [] },
-        negative: { MLB: [], 'MLB KIDS': [], DISCOVERY: [] },
+        base: { MLB: [], 'MLB KIDS': [], DISCOVERY: [], DUVETICA: [], SUPRA: [] },
+        positive: { MLB: [], 'MLB KIDS': [], DISCOVERY: [], DUVETICA: [], SUPRA: [] },
+        negative: { MLB: [], 'MLB KIDS': [], DISCOVERY: [], DUVETICA: [], SUPRA: [] },
       };
       const scenarioRetailDealer: Record<ScenarioKey, Record<SalesBrand, (number | null)[]>> = {
-        base: { MLB: [], 'MLB KIDS': [], DISCOVERY: [] },
-        positive: { MLB: [], 'MLB KIDS': [], DISCOVERY: [] },
-        negative: { MLB: [], 'MLB KIDS': [], DISCOVERY: [] },
+        base: { MLB: [], 'MLB KIDS': [], DISCOVERY: [], DUVETICA: [], SUPRA: [] },
+        positive: { MLB: [], 'MLB KIDS': [], DISCOVERY: [], DUVETICA: [], SUPRA: [] },
+        negative: { MLB: [], 'MLB KIDS': [], DISCOVERY: [], DUVETICA: [], SUPRA: [] },
       };
 
       type ScenarioInventoryApi = {
@@ -2770,6 +2915,8 @@ export default function PLForecastTab({ scenarioOverride = null }: PLForecastTab
           MLB: { dealerCloth: be(), dealerAcc: be(), dealer: be(), direct: be() },
           'MLB KIDS': { dealerCloth: be(), dealerAcc: be(), dealer: be(), direct: be() },
           DISCOVERY: { dealerCloth: be(), dealerAcc: be(), dealer: be(), direct: be() },
+          DUVETICA: { dealerCloth: be(), dealerAcc: be(), dealer: be(), direct: be() },
+          SUPRA: { dealerCloth: be(), dealerAcc: be(), dealer: be(), direct: be() },
         };
         for (const brand of SALES_BRANDS) {
           const pDCloth = scSD[`dealerCloth:${brand}`]?.monthly ?? be();
@@ -2804,6 +2951,8 @@ export default function PLForecastTab({ scenarioOverride = null }: PLForecastTab
           MLB: sumSeries(scSC.MLB.dealer, scSC.MLB.direct),
           'MLB KIDS': sumSeries(scSC['MLB KIDS'].dealer, scSC['MLB KIDS'].direct),
           DISCOVERY: sumSeries(scSC.DISCOVERY.dealer, scSC.DISCOVERY.direct),
+          DUVETICA: sumSeries(scSC.DUVETICA.dealer, scSC.DUVETICA.direct),
+          SUPRA: sumSeries(scSC.SUPRA.dealer, scSC.SUPRA.direct),
         };
 
         // Step 4: salesActual
@@ -2811,6 +2960,8 @@ export default function PLForecastTab({ scenarioOverride = null }: PLForecastTab
           MLB: { dealerCloth: be(), dealerAcc: be(), dealer: be(), direct: be(), total: be() },
           'MLB KIDS': { dealerCloth: be(), dealerAcc: be(), dealer: be(), direct: be(), total: be() },
           DISCOVERY: { dealerCloth: be(), dealerAcc: be(), dealer: be(), direct: be(), total: be() },
+          DUVETICA: { dealerCloth: be(), dealerAcc: be(), dealer: be(), direct: be(), total: be() },
+          SUPRA: { dealerCloth: be(), dealerAcc: be(), dealer: be(), direct: be(), total: be() },
         };
         for (const brand of SALES_BRANDS) {
           const pDCloth = applyRate(scSC[brand].dealerCloth, SHIPMENT_RATE_PERCENT_BY_CHANNEL.dealerCloth[brand]);
@@ -2841,6 +2992,8 @@ export default function PLForecastTab({ scenarioOverride = null }: PLForecastTab
           mlb: { ...monthlyInputs.mlb },
           kids: { ...monthlyInputs.kids },
           discovery: { ...monthlyInputs.discovery },
+          duvetica: { ...monthlyInputs.duvetica },
+          supra: { ...monthlyInputs.supra },
         };
         (Object.entries(FORECAST_TO_SALES_BRAND) as [ForecastLeafBrand, SalesBrand][]).forEach(([fBrand, sBrand]) => {
           scMI[fBrand] = { ...scMI[fBrand] };
@@ -2882,6 +3035,8 @@ export default function PLForecastTab({ scenarioOverride = null }: PLForecastTab
           mlb: deriveCalculated(scMI.mlb, ANNUAL_2025_RAW_BY_BRAND.mlb, financialAdjust26, financialAdjust25),
           kids: deriveCalculated(scMI.kids, ANNUAL_2025_RAW_BY_BRAND.kids),
           discovery: deriveCalculated(scMI.discovery, ANNUAL_2025_RAW_BY_BRAND.discovery),
+          duvetica: deriveCalculated(scMI.duvetica, ANNUAL_2025_RAW_BY_BRAND.duvetica),
+          supra: deriveCalculated(scMI.supra, ANNUAL_2025_RAW_BY_BRAND.supra),
         };
 
         // Step 7: corporateCalculated
@@ -2891,23 +3046,27 @@ export default function PLForecastTab({ scenarioOverride = null }: PLForecastTab
             const v1 = scMI.mlb[account]?.[idx] ?? null;
             const v2 = scMI.kids[account]?.[idx] ?? null;
             const v3 = scMI.discovery[account]?.[idx] ?? null;
-            if (v1 === null && v2 === null && v3 === null) return null;
-            return (v1 ?? 0) + (v2 ?? 0) + (v3 ?? 0);
+            const v4 = scMI.duvetica[account]?.[idx] ?? null;
+            const v5 = scMI.supra[account]?.[idx] ?? null;
+            if (v1 === null && v2 === null && v3 === null && v4 === null && v5 === null) return null;
+            return (v1 ?? 0) + (v2 ?? 0) + (v3 ?? 0) + (v4 ?? 0) + (v5 ?? 0);
           });
         }
         const corpAnnual: Record<string, number> = {};
         for (const account of RAW_ACCOUNTS) {
-          corpAnnual[account] = (ANNUAL_2025_RAW_BY_BRAND.mlb[account] ?? 0) + (ANNUAL_2025_RAW_BY_BRAND.kids[account] ?? 0) + (ANNUAL_2025_RAW_BY_BRAND.discovery[account] ?? 0);
+          corpAnnual[account] = (ANNUAL_2025_RAW_BY_BRAND.mlb[account] ?? 0) + (ANNUAL_2025_RAW_BY_BRAND.kids[account] ?? 0) + (ANNUAL_2025_RAW_BY_BRAND.discovery[account] ?? 0) + (ANNUAL_2025_RAW_BY_BRAND.duvetica[account] ?? 0) + (ANNUAL_2025_RAW_BY_BRAND.supra[account] ?? 0);
         }
         const scCorpCalc = deriveCalculated(corpRaw, corpAnnual, financialAdjust26, financialAdjust25);
 
-        const sb = (get: (b: SalesBrand) => (number | null)[]) => sumSeries(sumSeries(get('MLB'), get('MLB KIDS')), get('DISCOVERY'));
+        const sb = (get: (b: SalesBrand) => (number | null)[]) => sumSeries(sumSeries(sumSeries(sumSeries(get('MLB'), get('MLB KIDS')), get('DISCOVERY')), get('DUVETICA')), get('SUPRA'));
 
         // 시나리오 리테일매출 계산: 실적월은 CSV, 계획월은 Tag리테일 × (1 - 전년할인율)
         const scRetail: Record<SalesBrand, { dealer: (number | null)[]; direct: (number | null)[]; total: (number | null)[] }> = {
           MLB: { dealer: be(), direct: be(), total: be() },
           'MLB KIDS': { dealer: be(), direct: be(), total: be() },
           DISCOVERY: { dealer: be(), direct: be(), total: be() },
+          DUVETICA: { dealer: be(), direct: be(), total: be() },
+          SUPRA: { dealer: be(), direct: be(), total: be() },
         };
         for (const brand of SALES_BRANDS) {
           const actualDealer = brandActualByBrand[brand]?.retail?.dealer ?? be();
@@ -2935,6 +3094,8 @@ export default function PLForecastTab({ scenarioOverride = null }: PLForecastTab
             mlb: { tagSalesMonthly: scTS.MLB, salesChannel: scSC.MLB, salesActual: scSA.MLB, retail: fBrandRetail('mlb'), calculated: scCB.mlb },
             kids: { tagSalesMonthly: scTS['MLB KIDS'], salesChannel: scSC['MLB KIDS'], salesActual: scSA['MLB KIDS'], retail: fBrandRetail('kids'), calculated: scCB.kids },
             discovery: { tagSalesMonthly: scTS.DISCOVERY, salesChannel: scSC.DISCOVERY, salesActual: scSA.DISCOVERY, retail: fBrandRetail('discovery'), calculated: scCB.discovery },
+            duvetica: { tagSalesMonthly: scTS.DUVETICA, salesChannel: scSC.DUVETICA, salesActual: scSA.DUVETICA, retail: fBrandRetail('duvetica'), calculated: scCB.duvetica },
+            supra: { tagSalesMonthly: scTS.SUPRA, salesChannel: scSC.SUPRA, salesActual: scSA.SUPRA, retail: fBrandRetail('supra'), calculated: scCB.supra },
           },
           corporate: {
             tagSalesMonthly: sb((b) => scTS[b]),
@@ -2996,7 +3157,7 @@ export default function PLForecastTab({ scenarioOverride = null }: PLForecastTab
 
         // CF(sim)과 동일한 평가감율
         const WC_VAL_RATE: Record<SalesBrand, number> = {
-          MLB: 0.133924, 'MLB KIDS': 0.276843, DISCOVERY: 0.02253,
+          MLB: 0.133924, 'MLB KIDS': 0.276843, DISCOVERY: 0.02253, DUVETICA: 0, SUPRA: 0,
         };
         const WC_BRANDS: SalesBrand[] = ['MLB', 'MLB KIDS', 'DISCOVERY'];
 
@@ -3927,6 +4088,88 @@ export default function PLForecastTab({ scenarioOverride = null }: PLForecastTab
             </>
           )}
         </div>
+
+        {/* ─── 평가감 보조지표 ─────────────────────────────────────────────── */}
+        <div className="mt-8 rounded-2xl border border-slate-200 bg-slate-50/85 shadow-sm">
+          <button
+            type="button"
+            onClick={() => setValuationLossSectionOpen((prev) => !prev)}
+            className="flex w-full items-center gap-3 px-4 py-3 text-left"
+          >
+            <span className="inline-flex h-6 w-6 items-center justify-center rounded-md bg-[#7a5a4a] text-xs text-white">
+              평
+            </span>
+            <div className="flex-1 flex items-center gap-6">
+              <div className="shrink-0">
+                <div className="text-sm font-semibold text-slate-800">평가감 🟢Live</div>
+                <div className="text-xs text-slate-500">실적월까지 공백, 익월부터 12월까지 CSV 원천값 표시</div>
+              </div>
+              <div className="font-mono font-semibold text-blue-600 text-xs">보조파일(simu)/3개브랜드평가감.csv</div>
+            </div>
+            <div className="text-xs text-slate-500">
+              {valuationLossLoading
+                ? '불러오는 중...'
+                : valuationLossError
+                  ? '오류'
+                  : latestActualMonth > 0
+                    ? `실적월 ${latestActualMonth}월 기준`
+                    : '실적 파일 없음'}
+            </div>
+            <span className="text-xs text-slate-500">{valuationLossSectionOpen ? '접기' : '펼치기'}</span>
+          </button>
+
+          {valuationLossSectionOpen && (
+            <>
+              {valuationLossError ? (
+                <div className="border-t border-slate-200 px-4 py-4 text-sm text-red-500">{valuationLossError}</div>
+              ) : (
+                <div className="border-t border-slate-200 p-4">
+                  <div className="overflow-auto rounded-xl border border-slate-200 bg-white">
+                    <table className="w-full border-separate border-spacing-0 text-sm">
+                      <thead className="sticky top-0 z-10">
+                        <tr>
+                          <th className="min-w-[180px] border-b border-r border-slate-300 bg-slate-800 px-3 py-2 text-center font-semibold text-slate-100">
+                            구분
+                          </th>
+                          {MONTH_HEADERS.map((month) => (
+                            <th
+                              key={`valuation-loss-${month}`}
+                              className="min-w-[92px] border-b border-r border-slate-300 bg-slate-800 px-3 py-2 text-center font-semibold text-slate-100 last:border-r-0"
+                            >
+                              {month}
+                            </th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {SALES_BRANDS.map((brand, idx) => {
+                          const series = valuationLossByBrand[brand] ?? new Array(12).fill(null);
+                          return (
+                            <tr key={`valuation-loss-${brand}`} className={idx % 2 === 0 ? 'bg-white' : 'bg-slate-50/50'}>
+                              <td className="border-b border-r border-slate-200 px-3 py-2 font-medium text-slate-800">{brand}</td>
+                              {MONTH_HEADERS.map((_, monthIndex) => {
+                                const hiddenByActual = monthIndex + 1 <= latestActualMonth;
+                                const value = hiddenByActual ? null : (series[monthIndex] ?? null);
+                                return (
+                                  <td
+                                    key={`valuation-loss-${brand}-${monthIndex}`}
+                                    className="border-b border-r border-slate-200 px-3 py-2 text-right text-slate-700 last:border-r-0"
+                                  >
+                                    {formatKAmount(value)}
+                                  </td>
+                                );
+                              })}
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+            </>
+          )}
+        </div>
       </div>
 
     {/* ─── 시나리오 비교 모달 ──────────────────────────────────────────────────── */}
@@ -4442,7 +4685,7 @@ export default function PLForecastTab({ scenarioOverride = null }: PLForecastTab
                               if (isBrandRow && !wcInvBrandOpen) return null;
                               // 2025 실적: 브랜드 행은 hardcoded (CF(sim) 기준, K CNY)
                               const ACTUAL2025_INV_BY_BRAND: Record<SalesBrand, number> = {
-                                MLB: 1260042, 'MLB KIDS': 66326, DISCOVERY: 171427,
+                                MLB: 1260042, 'MLB KIDS': 66326, DISCOVERY: 171427, DUVETICA: 0, SUPRA: 0,
                               };
                               const actual25: number | null = isBrandRow
                                 ? (ACTUAL2025_INV_BY_BRAND[row.isBrand!] ?? null)

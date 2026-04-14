@@ -6,7 +6,7 @@ import Papa from 'papaparse';
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
-type SalesBrand = 'MLB' | 'MLB KIDS' | 'DISCOVERY';
+type SalesBrand = 'MLB' | 'MLB KIDS' | 'DISCOVERY' | 'DUVETICA' | 'SUPRA';
 type SalesChannel = 'dealer' | 'direct';
 
 interface BrandActualData {
@@ -29,7 +29,7 @@ interface ActualResponse {
 
 type CsvRow = Record<string, string>;
 
-const BRANDS: SalesBrand[] = ['MLB', 'MLB KIDS', 'DISCOVERY'];
+const BRANDS: SalesBrand[] = ['MLB', 'MLB KIDS', 'DISCOVERY', 'DUVETICA', 'SUPRA'];
 
 function empty12(): (number | null)[] {
   return new Array(12).fill(null);
@@ -63,7 +63,7 @@ export async function GET(req: NextRequest) {
     const dirPath = path.join(process.cwd(), '보조파일(simu)', 'pl_brand_actual_K');
     if (!fs.existsSync(dirPath)) {
       const empty: ActualResponse = {
-        brands: { MLB: makeBrandData(), 'MLB KIDS': makeBrandData(), DISCOVERY: makeBrandData() },
+        brands: { MLB: makeBrandData(), 'MLB KIDS': makeBrandData(), DISCOVERY: makeBrandData(), DUVETICA: makeBrandData(), SUPRA: makeBrandData() },
         availableMonths: [],
       };
       return NextResponse.json(empty, { headers: { 'Cache-Control': 'no-store' } });
@@ -91,6 +91,8 @@ export async function GET(req: NextRequest) {
         MLB: makeBrandData(),
         'MLB KIDS': makeBrandData(),
         DISCOVERY: makeBrandData(),
+        DUVETICA: makeBrandData(),
+        SUPRA: makeBrandData(),
       },
       availableMonths: [],
     };

@@ -1,4 +1,4 @@
-export type ForecastLeafBrand = 'mlb' | 'kids' | 'discovery';
+export type ForecastLeafBrand = 'mlb' | 'kids' | 'discovery' | 'duvetica' | 'supra';
 
 export interface ForecastRowDef {
   account: string;
@@ -14,6 +14,8 @@ export const FORECAST_BRANDS: { id: string | null; label: string }[] = [
   { id: 'mlb', label: 'MLB' },
   { id: 'kids', label: 'MLB KIDS' },
   { id: 'discovery', label: 'DISCOVERY' },
+  { id: 'duvetica', label: 'DUVETICA' },
+  { id: 'supra', label: 'SUPRA' },
 ];
 
 export const MONTH_HEADERS = ['1월', '2월', '3월', '4월', '5월', '6월', '7월', '8월', '9월', '10월', '11월', '12월'];
@@ -135,7 +137,7 @@ export const FINANCIAL_ADJUST_ACCOUNTS: string[] = [
 ];
 
 // ─── 시나리오 공용 타입 & 상수 ───────────────────────────────────────────────
-export type SalesBrand = 'MLB' | 'MLB KIDS' | 'DISCOVERY';
+export type SalesBrand = 'MLB' | 'MLB KIDS' | 'DISCOVERY' | 'DUVETICA' | 'SUPRA';
 export type ScenarioKey = 'negative' | 'base' | 'positive';
 
 // 재고자산(sim)에서 "재계산/저장"으로 확정한 시나리오 재고 페이로드
@@ -171,8 +173,8 @@ export const SCENARIO_DEFS: Record<ScenarioKey, ScenarioDef> = {
     borderColor: '#3b5f93',
     headerBgColor: '#2f4f7f',
     headerColor: '#ffffff',
-    dealerGrowthRate: { MLB: 5, 'MLB KIDS': -3, DISCOVERY: 280 },
-    hqGrowthRate: { MLB: 15, 'MLB KIDS': 8, DISCOVERY: 137 },
+    dealerGrowthRate: { MLB: 5, 'MLB KIDS': -3, DISCOVERY: 280, DUVETICA: 0, SUPRA: 0 },
+    hqGrowthRate: { MLB: 15, 'MLB KIDS': 8, DISCOVERY: 137, DUVETICA: 0, SUPRA: 0 },
   },
   positive: {
     key: 'positive',
@@ -181,8 +183,8 @@ export const SCENARIO_DEFS: Record<ScenarioKey, ScenarioDef> = {
     color: '#059669',
     bgColor: '#ecfdf5',
     borderColor: '#059669',
-    dealerGrowthRate: { MLB: 10, 'MLB KIDS': 5, DISCOVERY: 330 },
-    hqGrowthRate: { MLB: 20, 'MLB KIDS': 15, DISCOVERY: 200 },
+    dealerGrowthRate: { MLB: 10, 'MLB KIDS': 5, DISCOVERY: 330, DUVETICA: 0, SUPRA: 0 },
+    hqGrowthRate: { MLB: 20, 'MLB KIDS': 15, DISCOVERY: 200, DUVETICA: 0, SUPRA: 0 },
   },
   negative: {
     key: 'negative',
@@ -191,8 +193,8 @@ export const SCENARIO_DEFS: Record<ScenarioKey, ScenarioDef> = {
     color: '#dc2626',
     bgColor: '#fef2f2',
     borderColor: '#dc2626',
-    dealerGrowthRate: { MLB: 0, 'MLB KIDS': -5, DISCOVERY: 280 },
-    hqGrowthRate: { MLB: 4, 'MLB KIDS': 0, DISCOVERY: 137 },
+    dealerGrowthRate: { MLB: 0, 'MLB KIDS': -5, DISCOVERY: 280, DUVETICA: 0, SUPRA: 0 },
+    hqGrowthRate: { MLB: 4, 'MLB KIDS': 0, DISCOVERY: 137, DUVETICA: 0, SUPRA: 0 },
   },
 };
 
@@ -206,6 +208,8 @@ export const BRAND_GROWTH_OFFSET: Record<SalesBrand, number> = {
   MLB: 5,
   'MLB KIDS': 5,
   DISCOVERY: 50,
+  DUVETICA: 0,
+  SUPRA: 0,
 };
 
 /**
@@ -216,7 +220,7 @@ export function computeEffectiveGrowthRates(
   baseDealer: Record<SalesBrand, number>,
   baseHq: Record<SalesBrand, number>,
 ): Record<ScenarioKey, { dealer: Record<SalesBrand, number>; hq: Record<SalesBrand, number> }> {
-  const brands: SalesBrand[] = ['MLB', 'MLB KIDS', 'DISCOVERY'];
+  const brands: SalesBrand[] = ['MLB', 'MLB KIDS', 'DISCOVERY', 'DUVETICA', 'SUPRA'];
   const sign: Record<ScenarioKey, number> = { negative: -1, base: 0, positive: 1 };
   const result = {} as Record<ScenarioKey, { dealer: Record<SalesBrand, number>; hq: Record<SalesBrand, number> }>;
   for (const scKey of SCENARIO_ORDER) {
@@ -304,5 +308,55 @@ export const ANNUAL_2025_RAW_BY_BRAND: Record<ForecastLeafBrand, Record<string, 
     '감가상각비(영업비)': 28149,
     '세금과공과': 0,
     '기타(영업비)': 724655,
+  },
+  duvetica: {
+    'Tag매출': 35019950,
+    '실판매출': 9143495,
+    '매출원가': 11821925,
+    '평가감': -11481280.439,
+    '급여(매장)': 1116002,
+    '복리후생비(매장)': 370744,
+    '플랫폼수수료': 438067,
+    'TP수수료': 1501143,
+    '직접광고비': 731854,
+    '대리상지원금': 0,
+    '물류비': 1100106,
+    '매장임차료': 7677585,
+    '감가상각비': 1299810,
+    '기타(직접비)': 607006,
+    '급여(사무실)': 0,
+    '복리후생비(사무실)': 0,
+    '광고비': 0,
+    '수주회': 0,
+    '지급수수료': 0,
+    '임차료': 0,
+    '감가상각비(영업비)': 0,
+    '세금과공과': 0,
+    '기타(영업비)': 0,
+  },
+  supra: {
+    'Tag매출': 10272697,
+    '실판매출': 2357789,
+    '매출원가': 3274499,
+    '평가감': 40604724.3895,
+    '급여(매장)': 899661,
+    '복리후생비(매장)': 340603,
+    '플랫폼수수료': 121220.16,
+    'TP수수료': 1038881.66,
+    '직접광고비': 156879.68,
+    '대리상지원금': 0,
+    '물류비': 1599199,
+    '매장임차료': 4244230.33,
+    '감가상각비': 2032874,
+    '기타(직접비)': 568161,
+    '급여(사무실)': 0,
+    '복리후생비(사무실)': 0,
+    '광고비': 0,
+    '수주회': 0,
+    '지급수수료': 0,
+    '임차료': 0,
+    '감가상각비(영업비)': 0,
+    '세금과공과': 0,
+    '기타(영업비)': 0,
   },
 };

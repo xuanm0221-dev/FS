@@ -37,6 +37,8 @@ interface Props {
   use2025Legend?: boolean;
   /** false면 표 하단 범례를 숨김 */
   showLegend?: boolean;
+  /** 기말과 증감 사이에 Sell-in (YoY)/Sell-out (YoY)/기말 (YoY) 3컬럼 표시 */
+  showYoyColumns?: boolean;
 }
 
 // 헤더 스타일
@@ -204,6 +206,7 @@ export default function InventoryTable({
   bottomContent,
   use2025Legend = false,
   showLegend = true,
+  showYoyColumns = false,
 }: Props) {
   const titleMeta = parseTitleMeta(title);
   const isWoiEditable = year === 2026 && !!onWoiChange;
@@ -325,6 +328,28 @@ export default function InventoryTable({
                 기말<br />
                 <span className="font-normal text-[10px] text-slate-500">({year}년기말)</span>
               </th>
+              {showYoyColumns && (
+                <>
+                  <th
+                    className={TH}
+                    style={{ width: '5%', minWidth: 55, boxShadow: 'inset 3px 0 0 0 #16a34a, inset 0 3px 0 0 #16a34a' }}
+                  >
+                    Sell-in<br /><span className="font-normal text-[10px] text-slate-500">(YoY)</span>
+                  </th>
+                  <th
+                    className={TH}
+                    style={{ width: '5%', minWidth: 55, boxShadow: 'inset 0 3px 0 0 #16a34a' }}
+                  >
+                    Sell-out<br /><span className="font-normal text-[10px] text-slate-500">(YoY)</span>
+                  </th>
+                  <th
+                    className={TH}
+                    style={{ width: '5%', minWidth: 55, boxShadow: 'inset -3px 0 0 0 #16a34a, inset 0 3px 0 0 #16a34a' }}
+                  >
+                    기말<br /><span className="font-normal text-[10px] text-slate-500">(YoY)</span>
+                  </th>
+                </>
+              )}
               <th className={TH} style={{ width: '5%', minWidth: 50 }}>증감</th>
               <th className={TH} style={{ width: '5%', minWidth: 50 }}>Sell-through</th>
               <th className={TH} style={{ width: '5%', minWidth: 50 }}>
@@ -360,7 +385,17 @@ export default function InventoryTable({
                 }
               }
               return displayRows;
-            })().map((row) => (
+            })().map((row, rowIdx, arr) => {
+              const isLastRow = rowIdx === arr.length - 1;
+              const yoyBoxStyle = (which: 'left' | 'mid' | 'right'): React.CSSProperties => {
+                if (!showYoyColumns) return {};
+                const parts: string[] = [];
+                if (which === 'left') parts.push('inset 3px 0 0 0 #16a34a');
+                if (which === 'right') parts.push('inset -3px 0 0 0 #16a34a');
+                if (isLastRow) parts.push('inset 0 -3px 0 0 #16a34a');
+                return parts.length ? { boxShadow: parts.join(', ') } : {};
+              };
+              return (
               <tr key={row.key} className={`${rowBg(row)} transition-colors min-h-[28px]`}>
                 {/* 구분 */}
                 <td className={labelCls(row)}>
@@ -452,6 +487,33 @@ export default function InventoryTable({
                     ? (() => { const v = 'yoyClosing' in row ? row.yoyClosing : yoyClosing; return v != null ? formatPct(v * 100) : '-'; })()
                     : formatKValue((row as InventoryRow).closing)}
                 </td>
+                {/* Sell-in (YoY) / Sell-out (YoY) / 기말 (YoY) — 토글로 표시 */}
+                {showYoyColumns && (() => {
+                  if (isYoyRow(row)) {
+                    return (
+                      <>
+                        <td className={cellCls(row)} style={yoyBoxStyle('left')}>-</td>
+                        <td className={cellCls(row)} style={yoyBoxStyle('mid')}>-</td>
+                        <td className={cellCls(row)} style={yoyBoxStyle('right')}>-</td>
+                      </>
+                    );
+                  }
+                  const r = row as InventoryRow;
+                  const prev = prevYearByKey.get(r.key);
+                  const sellInDenom = prev ? prev.opening + prev.sellInTotal : 0;
+                  const sellInNum = r.opening + r.sellInTotal;
+                  const sellOutDenom = prev ? prev.sellOutTotal : 0;
+                  const closingDenom = prev ? prev.closing : 0;
+                  const fmt = (num: number, denom: number): string =>
+                    denom > 0 && Number.isFinite(num) ? `${Math.round((num / denom) * 100)}%` : '';
+                  return (
+                    <>
+                      <td className={cellCls(row)} style={yoyBoxStyle('left')}>{fmt(sellInNum, sellInDenom)}</td>
+                      <td className={cellCls(row)} style={yoyBoxStyle('mid')}>{fmt(r.sellOutTotal, sellOutDenom)}</td>
+                      <td className={cellCls(row)} style={yoyBoxStyle('right')}>{fmt(r.closing, closingDenom)}</td>
+                    </>
+                  );
+                })()}
                 {/* 증감 */}
                 <td className={`${cellCls(row)} ${!isYoyRow(row) && getDisplayDelta(row as InventoryRow) < 0 ? 'text-black' : !isYoyRow(row) && getDisplayDelta(row as InventoryRow) > 0 ? 'text-red-500' : ''}`}>
                   {isYoyRow(row) ? '-' : (getDisplayDelta(row as InventoryRow) > 0 ? '+' : '') + formatKValue(getDisplayDelta(row as InventoryRow))}
@@ -523,7 +585,8 @@ export default function InventoryTable({
                   );
                 })()}
               </tr>
-            ))}
+              );
+            })}
           </tbody>
         </table>
       </div>

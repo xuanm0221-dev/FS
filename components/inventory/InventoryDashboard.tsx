@@ -829,6 +829,12 @@ export default function InventoryDashboard({ onScenarioRecalc }: InventoryDashbo
     'MLB KIDS': true,
     DISCOVERY: true,
   });
+  // 브랜드별 YoY 컬럼 (Sell-in YoY / Sell-out YoY / 기말 YoY) 토글 — 기본 접힘
+  const [inventoryBrandYoyOpen, setInventoryBrandYoyOpen] = useState<Record<AnnualPlanBrand, boolean>>({
+    MLB: false,
+    'MLB KIDS': false,
+    DISCOVERY: false,
+  });
   const [dependentPlanInitialLoading, setDependentPlanInitialLoading] = useState(false);
   const [otbData, setOtbData] = useState<OtbData | null>(null);
   const [otbLoading, setOtbLoading] = useState(false);
@@ -4163,16 +4169,26 @@ export default function InventoryDashboard({ onScenarioRecalc }: InventoryDashbo
           <div className="grid grid-cols-3 gap-4">
             {ANNUAL_PLAN_BRANDS.map((b) => {
               const isOpen = inventoryBrandOpen[b];
+              const isYoyOpen = inventoryBrandYoyOpen[b];
               return (
-                <button
-                  key={`inventory-toggle-${b}`}
-                  type="button"
-                  onClick={() => setInventoryBrandOpen((prev) => ({ ...prev, [b]: !prev[b] }))}
-                  className="flex items-center justify-between rounded-lg border border-slate-300 bg-white px-3 py-2 text-left shadow-sm hover:bg-slate-50"
-                >
-                  <span className="text-sm font-semibold text-slate-800">{`${b} 재고자산표`}</span>
-                  <span className="text-xs text-slate-500">{isOpen ? '접기 ▲' : '펼치기 ▼'}</span>
-                </button>
+                <div key={`inventory-toggle-${b}`} className="flex items-stretch gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setInventoryBrandOpen((prev) => ({ ...prev, [b]: !prev[b] }))}
+                    className="flex-1 flex items-center justify-between rounded-lg border border-slate-300 bg-white px-3 py-2 text-left shadow-sm hover:bg-slate-50"
+                  >
+                    <span className="text-sm font-semibold text-slate-800">{`${b} 재고자산표`}</span>
+                    <span className="text-xs text-slate-500">{isOpen ? '접기 ▲' : '펼치기 ▼'}</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setInventoryBrandYoyOpen((prev) => ({ ...prev, [b]: !prev[b] }))}
+                    className={`shrink-0 rounded-lg border px-3 py-2 text-xs shadow-sm hover:bg-slate-50 ${isYoyOpen ? 'border-sky-400 bg-sky-50 text-sky-700' : 'border-slate-300 bg-white text-slate-600'}`}
+                    title="Sell-in (YoY) / Sell-out (YoY) / 기말 (YoY) 컬럼 표시"
+                  >
+                    YoY 컬럼 {isYoyOpen ? '접기 ▲' : '펼치기 ▼'}
+                  </button>
+                </div>
               );
             })}
           </div>
@@ -4200,6 +4216,7 @@ export default function InventoryDashboard({ onScenarioRecalc }: InventoryDashbo
                     prevYearTotalOpening={undefined}
                     prevYearTotalSellIn={prevData?.dealer.rows.find((r) => r.key === '재고자산합계')?.sellInTotal}
                     prevYearTotalSellOut={prevData?.dealer.rows.find((r) => r.key === '재고자산합계')?.sellOutTotal}
+                    showYoyColumns={inventoryBrandYoyOpen[b]}
                   />
                 </div>
               ) : <div key={b} className="min-w-0" />;
@@ -4230,6 +4247,7 @@ export default function InventoryDashboard({ onScenarioRecalc }: InventoryDashbo
                     prevYearTotalSellIn={prevData?.hq.rows.find((r) => r.key === '재고자산합계')?.sellInTotal}
                     prevYearTotalSellOut={prevData?.hq.rows.find((r) => r.key === '재고자산합계')?.sellOutTotal}
                     prevYearTotalHqSales={prevData?.hq.rows.find((r) => r.key === '재고자산합계')?.hqSalesTotal}
+                    showYoyColumns={inventoryBrandYoyOpen[b]}
                     bottomContent={year === 2026 ? (
                       <HqHoldingWoiTable values={accHqHoldingWoi} onChange={handleHqHoldingWoiChange} horizontal />
                     ) : undefined}

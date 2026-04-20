@@ -26,10 +26,13 @@ declare global {
 }
 
 function getSfConfig() {
+  // .env.local의 SNOWFLAKE_PRIVATE_KEY는 escape된 \n 문자열로 저장 → 실제 개행으로 복원
+  const privateKey = process.env.SNOWFLAKE_PRIVATE_KEY?.replace(/\\n/g, '\n');
   return {
     account: process.env.SNOWFLAKE_ACCOUNT!,
-    username: process.env.SNOWFLAKE_USER!,
-    password: process.env.SNOWFLAKE_PASSWORD!,
+    username: process.env.SNOWFLAKE_USERNAME!,
+    authenticator: 'SNOWFLAKE_JWT' as const,
+    privateKey,
     warehouse: process.env.SNOWFLAKE_WAREHOUSE,
     database: process.env.SNOWFLAKE_DATABASE,
     schema: process.env.SNOWFLAKE_SCHEMA,

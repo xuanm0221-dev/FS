@@ -8,6 +8,7 @@ import {
   DIRECT_EXPENSE_ACCOUNTS,
   FORECAST_BRANDS,
   MONTH_HEADERS,
+  QUARTER_HEADERS,
   OPERATING_EXPENSE_ACCOUNTS,
   RAW_ACCOUNTS,
   ROWS_BRAND,
@@ -407,17 +408,15 @@ interface DealerAccSellInPayload {
   values?: Partial<Record<SalesBrand, number>>;
 }
 
-type ShipmentRateChannel = 'dealerCloth' | 'dealerAcc' | 'direct';
+type ShipmentRateChannel = 'dealerCloth' | 'dealerAcc';
 const SHIPMENT_RATE_PERCENT_BY_CHANNEL: Record<ShipmentRateChannel, Record<SalesBrand, number>> = {
   dealerCloth: { MLB: 42, 'MLB KIDS': 42, DISCOVERY: 45, DUVETICA: 0, SUPRA: 0 },
   dealerAcc: { MLB: 47, 'MLB KIDS': 42, DISCOVERY: 45, DUVETICA: 0, SUPRA: 0 },
-  direct: { MLB: 90, 'MLB KIDS': 90, DISCOVERY: 90, DUVETICA: 0, SUPRA: 0 },
 };
 
-const BRAND_SHIPMENT_RATE_ROWS: Array<{ category: '대리상(의류)' | '대리상(ACC)' | '직영'; rates: Record<SalesBrand, number> }> = [
+const BRAND_SHIPMENT_RATE_ROWS: Array<{ category: '대리상(의류)' | '대리상(ACC)'; rates: Record<SalesBrand, number> }> = [
   { category: '대리상(의류)', rates: SHIPMENT_RATE_PERCENT_BY_CHANNEL.dealerCloth },
   { category: '대리상(ACC)', rates: SHIPMENT_RATE_PERCENT_BY_CHANNEL.dealerAcc },
-  { category: '직영', rates: SHIPMENT_RATE_PERCENT_BY_CHANNEL.direct },
 ];
 
 function makeSalesRows(): SalesRowDef[] {
@@ -894,6 +893,8 @@ type PLForecastTabProps = {
 
 export default function PLForecastTab({ scenarioOverride = null }: PLForecastTabProps = {}) {
   const [activeBrand, setActiveBrand] = useState<string | null>(null);
+  // 메인 PL 테이블 월/분기 뷰 모드 (시나리오는 해당 없음)
+  const [viewMode, setViewMode] = useState<'월' | '분기'>('월');
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set(['리테일매출', 'Tag매출', '실판매출', '매출원가 합계', '직접비', '영업비', '재무&관리차이(-)']));
   const [logicGuideCollapsed, setLogicGuideCollapsed] = useState<boolean>(true);
   const [monthlyInputs, setMonthlyInputs] = useState<MonthlyInputs>(emptyMonthlyInputs);
@@ -930,6 +931,37 @@ export default function PLForecastTab({ scenarioOverride = null }: PLForecastTab
   });
   const [retailActualLoading, setRetailActualLoading] = useState<boolean>(false);
   const [retailActualError, setRetailActualError] = useState<string | null>(null);
+  // Tag매출 전처리 (Snowflake 직접, 서버 캐시) — 연도별 2개 (2025/2026)
+  type TagSales2025Grp = '직영' | '대리상(ACC)' | '대리상(의류)';
+  type TagSales2025BrandData = Record<TagSales2025Grp, Record<string, (number | null)[]>>;
+  type TagSalesYearData = {
+    brands: Record<SalesBrand, TagSales2025BrandData>;
+    clothingTags: string[];
+  };
+  const emptyTagSalesYearData = (): TagSalesYearData => ({
+    brands: {
+      MLB: { '직영': {}, '대리상(ACC)': {}, '대리상(의류)': {} },
+      'MLB KIDS': { '직영': {}, '대리상(ACC)': {}, '대리상(의류)': {} },
+      DISCOVERY: { '직영': {}, '대리상(ACC)': {}, '대리상(의류)': {} },
+      DUVETICA: { '직영': {}, '대리상(ACC)': {}, '대리상(의류)': {} },
+      SUPRA: { '직영': {}, '대리상(ACC)': {}, '대리상(의류)': {} },
+    },
+    clothingTags: [],
+  });
+  const [tagSales2025Data, setTagSales2025Data] = useState<TagSalesYearData>(emptyTagSalesYearData);
+  const [tagSales2026Data, setTagSales2026Data] = useState<TagSalesYearData>(emptyTagSalesYearData);
+  const [tagSales2025Loading, setTagSales2025Loading] = useState<boolean>(false);
+  const [tagSales2026Loading, setTagSales2026Loading] = useState<boolean>(false);
+  const [tagSales2025Error, setTagSales2025Error] = useState<string | null>(null);
+  const [tagSales2026Error, setTagSales2026Error] = useState<string | null>(null);
+  const [tagSalesSelectedYear, setTagSalesSelectedYear] = useState<2025 | 2026>(2025);
+  const [tagSales2025SectionOpen, setTagSales2025SectionOpen] = useState<boolean>(false);
+  // 브랜드별 접힘 (기본: 전부 펼침)
+  const [tagSales2025BrandCollapsed, setTagSales2025BrandCollapsed] = useState<Set<SalesBrand>>(new Set());
+  // 대리상(의류) 접힘 (기본: 전부 접힘)
+  const [tagSales2025ClothCollapsed, setTagSales2025ClothCollapsed] = useState<Set<SalesBrand>>(
+    new Set(['MLB', 'MLB KIDS', 'DISCOVERY', 'DUVETICA', 'SUPRA'] as SalesBrand[]),
+  );
   const [salesCollapsed, setSalesCollapsed] = useState<Set<string>>(new Set());
   const [otbLoading, setOtbLoading] = useState<boolean>(false);
   const [otbError, setOtbError] = useState<string | null>(null);
@@ -997,13 +1029,75 @@ export default function PLForecastTab({ scenarioOverride = null }: PLForecastTab
     차기시즌: new Array(12).fill(null),
     ACC: new Array(12).fill(null),
   });
-  const [salesSupportActualByBrand, setSalesSupportActualByBrand] = useState<Record<SalesBrand, Record<SalesSupportActualKey, (number | null)[]>>>({
+  const [salesSupportActualByBrandCSV, setSalesSupportActualByBrand] = useState<Record<SalesBrand, Record<SalesSupportActualKey, (number | null)[]>>>({
     MLB: emptySalesSupportActual(),
     'MLB KIDS': emptySalesSupportActual(),
     DISCOVERY: emptySalesSupportActual(),
     DUVETICA: emptySalesSupportActual(),
     SUPRA: emptySalesSupportActual(),
   });
+  // 매출 보조지표 실적월 override: Snowflake 26년 Tag매출 전처리 데이터 사용, 계획월은 CSV 유지
+  // 매핑: 당년S=26S, 당년F=26F, 1년차=25S+25F, 차기시즌=27+이상, ACC=대리상(ACC).ACC 합계
+  // Snowflake 데이터 없으면 null (빈값)
+  const salesSupportActualByBrand = useMemo<Record<SalesBrand, Record<SalesSupportActualKey, (number | null)[]>>>(() => {
+    const actualCutoff = brandActualAvailableMonths.length === 0 ? 0 : Math.max(...brandActualAvailableMonths);
+    if (actualCutoff <= 0) return salesSupportActualByBrandCSV;
+    const nullSafeAdd = (a: number | null, b: number | null): number | null => {
+      if (a == null && b == null) return null;
+      return (a ?? 0) + (b ?? 0);
+    };
+    const sumClothingByYearGte = (clothing: Record<string, (number | null)[]>, minYear: number): (number | null)[] => {
+      const out: (number | null)[] = new Array(12).fill(null);
+      for (const [tag, series] of Object.entries(clothing)) {
+        if (tag === '과시즌') continue;
+        const m = tag.match(/^(\d{2})[SF]$/);
+        if (!m) continue;
+        const yr = Number(m[1]);
+        if (!Number.isFinite(yr) || yr < minYear) continue;
+        for (let i = 0; i < 12; i++) out[i] = nullSafeAdd(out[i], series[i] ?? null);
+      }
+      return out;
+    };
+    const result = {} as Record<SalesBrand, Record<SalesSupportActualKey, (number | null)[]>>;
+    for (const brand of ['MLB', 'MLB KIDS', 'DISCOVERY', 'DUVETICA', 'SUPRA'] as SalesBrand[]) {
+      const csv = salesSupportActualByBrandCSV[brand] ?? emptySalesSupportActual();
+      const sfBrand = tagSales2026Data.brands[brand];
+      const cloth = sfBrand?.['대리상(의류)'] ?? {};
+      const sf당년S = cloth['26S'];
+      const sf당년F = cloth['26F'];
+      const sf25S = cloth['25S'];
+      const sf25F = cloth['25F'];
+      const sf차기 = sumClothingByYearGte(cloth, 27);
+      const sfACC = Object.values(sfBrand?.['대리상(ACC)'] ?? {})[0]; // ACC 합계 (단일 태그)
+      const merged: Record<SalesSupportActualKey, (number | null)[]> = {
+        당년S: new Array(12).fill(null),
+        당년F: new Array(12).fill(null),
+        '1년차': new Array(12).fill(null),
+        차기시즌: new Array(12).fill(null),
+        ACC: new Array(12).fill(null),
+      };
+      // Snowflake 값은 K 단위 → 내부 원(CNY) 단위로 변환 (× 1000)
+      const toCny = (v: number | null): number | null => (v == null ? null : v * 1000);
+      for (let i = 0; i < 12; i++) {
+        if (i < actualCutoff) {
+          merged.당년S[i] = toCny(sf당년S?.[i] ?? null);
+          merged.당년F[i] = toCny(sf당년F?.[i] ?? null);
+          const y1 = nullSafeAdd(sf25S?.[i] ?? null, sf25F?.[i] ?? null);
+          merged['1년차'][i] = toCny(y1);
+          merged.차기시즌[i] = toCny(sf차기[i] ?? null);
+          merged.ACC[i] = toCny(sfACC?.[i] ?? null);
+        } else {
+          merged.당년S[i] = csv.당년S[i] ?? null;
+          merged.당년F[i] = csv.당년F[i] ?? null;
+          merged['1년차'][i] = csv['1년차'][i] ?? null;
+          merged.차기시즌[i] = csv.차기시즌[i] ?? null;
+          merged.ACC[i] = csv.ACC[i] ?? null;
+        }
+      }
+      result[brand] = merged;
+    }
+    return result;
+  }, [salesSupportActualByBrandCSV, tagSales2026Data, brandActualAvailableMonths]);
   const [opexForecastLoading, setOpexForecastLoading] = useState<boolean>(false);
   const [opexForecastError, setOpexForecastError] = useState<string | null>(null);
   const [opexForecastByBrand, setOpexForecastByBrand] = useState<Record<SalesBrand, Record<string, (number | null)[]>>>({
@@ -1476,6 +1570,37 @@ export default function PLForecastTab({ scenarioOverride = null }: PLForecastTab
       }
     };
     fetchRetailActual();
+    return () => { mounted = false; };
+  }, []);
+
+  // Tag매출 전처리 데이터 로드 (연도별 2개 병렬)
+  useEffect(() => {
+    let mounted = true;
+    const loadYear = async (
+      year: 2025 | 2026,
+      setLoading: (v: boolean) => void,
+      setError: (v: string | null) => void,
+      setData: (v: TagSalesYearData) => void,
+    ) => {
+      setLoading(true);
+      setError(null);
+      try {
+        const res = await fetch(`/api/pl-forecast/tag-sales-2025-preprocess?year=${year}`, { cache: 'no-store' });
+        const json = await res.json();
+        if (!res.ok) throw new Error(json?.error || `${year} Tag매출 전처리 데이터를 불러오지 못했습니다.`);
+        if (!mounted) return;
+        setData({
+          brands: json.brands ?? emptyTagSalesYearData().brands,
+          clothingTags: Array.isArray(json.clothingTags) ? json.clothingTags : [],
+        });
+      } catch (err) {
+        if (mounted) setError(err instanceof Error ? err.message : `${year} Tag매출 전처리 데이터를 불러오지 못했습니다.`);
+      } finally {
+        if (mounted) setLoading(false);
+      }
+    };
+    loadYear(2025, setTagSales2025Loading, setTagSales2025Error, setTagSales2025Data);
+    loadYear(2026, setTagSales2026Loading, setTagSales2026Error, setTagSales2026Data);
     return () => { mounted = false; };
   }, []);
 
@@ -2067,6 +2192,70 @@ export default function PLForecastTab({ scenarioOverride = null }: PLForecastTab
     });
   };
 
+  // 분기값 계산 헬퍼 — 비율/YoY 계정은 분자/분모 분기합산 후 재계산, 일반 계정은 3개월 합산
+  const getQuarterValue = (row: ForecastRowDef, qIdx: number): number | null => {
+    const start = qIdx * 3;
+    const end = start + 3;
+    const sumSlice = (arr: (number | null)[]): number | null => {
+      let s = 0;
+      let any = false;
+      for (let i = start; i < end; i++) {
+        const v = arr[i];
+        if (v != null && Number.isFinite(v)) { s += v; any = true; }
+      }
+      return any ? s : null;
+    };
+    const acc = row.account;
+    // 비율 재계산
+    if (acc === '(Tag 대비 원가율)') {
+      const tag = sumSlice(getRowSeries('Tag매출').monthly);
+      const cogs = sumSlice(getRowSeries('매출원가').monthly);
+      if (tag === null || tag === 0 || cogs === null) return null;
+      return (cogs * 1.13) / tag;
+    }
+    if (acc === '영업이익률(관리식)') {
+      const oi = sumSlice(getRowSeries('영업이익(관리식)').monthly);
+      const sales = sumSlice(getRowSeries('실판매출').monthly);
+      if (oi === null || sales === null || sales === 0) return null;
+      return oi / sales;
+    }
+    if (acc === '영업이익률(IFRS)') {
+      const oi = sumSlice(getRowSeries('영업이익(IFRS)').monthly);
+      const sales = sumSlice(getRowSeries('매출(IFRS)').monthly);
+      if (oi === null || sales === null || sales === 0) return null;
+      return oi / sales;
+    }
+    // YoY 재계산 (분기 26합 / 분기 25합)
+    if (acc === 'YOY (리테일)') {
+      const num26 = activeBrand === null
+        ? sumSlice(corporateRetail.total)
+        : sumSlice(retailByBrand[FORECAST_TO_SALES_BRAND[activeBrand as ForecastLeafBrand]].total);
+      const denom25 = activeBrand === null
+        ? sumSlice(SALES_BRANDS.reduce<(number | null)[]>((a, b) => sumSeries(a, retailActualByBrand[b]['리테일매출']), new Array(12).fill(null)))
+        : sumSlice(retailActualByBrand[FORECAST_TO_SALES_BRAND[activeBrand as ForecastLeafBrand]]['리테일매출']);
+      if (num26 === null || denom25 === null || denom25 === 0) return null;
+      return (num26 / 1000) / denom25;
+    }
+    if (acc === 'YOY (V+)') {
+      const vMinus = activeBrand === null
+        ? corporateActualSalesChannel.total
+        : salesActualByBrand[FORECAST_TO_SALES_BRAND[activeBrand as ForecastLeafBrand]].total;
+      const num26 = sumSlice(vMinus.map((v) => (v === null ? null : v * 1.13)));
+      const denom25 = activeBrand === null
+        ? sumSlice(SALES_BRANDS.reduce<(number | null)[]>((a, b) => sumSeries(a, retailActualByBrand[b]['실판매출(V+)']), new Array(12).fill(null)))
+        : sumSlice(retailActualByBrand[FORECAST_TO_SALES_BRAND[activeBrand as ForecastLeafBrand]]['실판매출(V+)']);
+      if (num26 === null || denom25 === null || denom25 === 0) return null;
+      return (num26 / 1000) / denom25;
+    }
+    // 실판매출(V+) — 월별 실판(V-)*1.13 이므로 분기합산 = 실판분기합 * 1.13
+    if (acc === '실판매출(V+)') {
+      const vMinus = sumSlice(getRowSeries('실판매출').monthly);
+      return vMinus === null ? null : vMinus * 1.13;
+    }
+    // 기본: 월별 합산
+    return sumSlice(getRowSeries(acc).monthly);
+  };
+
   const renderMonthInput = (row: ForecastRowDef, monthIndex: number) => {
     const decimals = YOY_ROW_ACCOUNTS.has(row.account) ? 0 : 1;
     if (activeBrand === null) {
@@ -2153,7 +2342,7 @@ export default function PLForecastTab({ scenarioOverride = null }: PLForecastTab
     }
 
     const actualCutoffMonth =
-      salesSupportActualAvailableMonths.length === 0 ? 0 : Math.max(...salesSupportActualAvailableMonths);
+      brandActualAvailableMonths.length === 0 ? 0 : Math.max(...brandActualAvailableMonths);
     if (actualCutoffMonth <= 0) return baseline;
 
     const result: Record<SalesBrand, Record<SalesSeason, (number | null)[]>> = {
@@ -2212,7 +2401,7 @@ export default function PLForecastTab({ scenarioOverride = null }: PLForecastTab
     }
 
     return result;
-  }, [shipmentProgressRows, otbByBrand, salesSupportActualByBrand, salesSupportActualAvailableMonths]);
+  }, [shipmentProgressRows, otbByBrand, salesSupportActualByBrand, brandActualAvailableMonths]);
 
   const accRatioByBrand = useMemo(() => {
     const map: Record<SalesBrand, (number | null)[]> = {
@@ -2234,7 +2423,7 @@ export default function PLForecastTab({ scenarioOverride = null }: PLForecastTab
     for (const row of salesRows) {
       if (!row.isGroup && row.leafKind) {
         const latestBrandActualMonth = brandActualAvailableMonths.length === 0 ? 0 : Math.max(...brandActualAvailableMonths);
-        const latestSupportActualMonth = salesSupportActualAvailableMonths.length === 0 ? 0 : Math.max(...salesSupportActualAvailableMonths);
+        const latestSupportActualMonth = brandActualAvailableMonths.length === 0 ? 0 : Math.max(...brandActualAvailableMonths);
         const monthly =
           row.leafKind === 'dealerCurrS'
             ? dealerSeasonMonthlyByBrand[row.brand].당년S
@@ -2315,12 +2504,12 @@ export default function PLForecastTab({ scenarioOverride = null }: PLForecastTab
     }
 
     return rowMap;
-  }, [salesRows, otbByBrand, directRetailByBrand, dealerSeasonMonthlyByBrand, dealerAccOtbByBrand, accRatioByBrand, brandActualAvailableMonths, salesSupportActualByBrand, salesSupportActualAvailableMonths]);
+  }, [salesRows, otbByBrand, directRetailByBrand, dealerSeasonMonthlyByBrand, dealerAccOtbByBrand, accRatioByBrand, brandActualAvailableMonths, salesSupportActualByBrand]);
 
   const salesChannelByBrand = useMemo(() => {
     const buildEmpty = () => new Array(12).fill(null) as (number | null)[];
     const supportActualCutoff =
-      salesSupportActualAvailableMonths.length === 0 ? 0 : Math.max(...salesSupportActualAvailableMonths);
+      brandActualAvailableMonths.length === 0 ? 0 : Math.max(...brandActualAvailableMonths);
     const result: Record<SalesBrand, { dealerCloth: (number | null)[]; dealerAcc: (number | null)[]; dealer: (number | null)[]; direct: (number | null)[] }> = {
       MLB: { dealerCloth: buildEmpty(), dealerAcc: buildEmpty(), dealer: buildEmpty(), direct: buildEmpty() },
       'MLB KIDS': { dealerCloth: buildEmpty(), dealerAcc: buildEmpty(), dealer: buildEmpty(), direct: buildEmpty() },
@@ -2386,7 +2575,7 @@ export default function PLForecastTab({ scenarioOverride = null }: PLForecastTab
       };
     }
     return result;
-  }, [salesDerived, brandActualByBrand, salesSupportActualByBrand, salesSupportActualAvailableMonths]);
+  }, [salesDerived, brandActualByBrand, salesSupportActualByBrand, brandActualAvailableMonths]);
 
   const corporateSalesChannel = useMemo(() => {
     const sumAll = (key: 'dealerCloth' | 'dealerAcc' | 'dealer' | 'direct') =>
@@ -3001,7 +3190,7 @@ export default function PLForecastTab({ scenarioOverride = null }: PLForecastTab
       // PL 파이프라인 재계산 (순수 함수 - 현재 컴포넌트 state 사용)
       const computeOnePL = (scDirectRetail: Record<SalesBrand, (number | null)[]>, scDealerRetail: Record<SalesBrand, (number | null)[]>): ScenarioResult => {
         const be = () => new Array(12).fill(null) as (number | null)[];
-        const latestSupportCutoff = salesSupportActualAvailableMonths.length === 0 ? 0 : Math.max(...salesSupportActualAvailableMonths);
+        const latestSupportCutoff = brandActualAvailableMonths.length === 0 ? 0 : Math.max(...brandActualAvailableMonths);
         const latestBrandActual = brandActualAvailableMonths.length === 0 ? 0 : Math.max(...brandActualAvailableMonths);
 
         // Step 1: salesDerived
@@ -3408,6 +3597,24 @@ export default function PLForecastTab({ scenarioOverride = null }: PLForecastTab
 
             <div className="h-6 w-px bg-slate-300" />
 
+            {/* 월/분기 뷰 토글 */}
+            <div className="flex items-center gap-0 rounded-lg border border-slate-300 bg-white p-0.5 shadow-sm">
+              {(['월', '분기'] as const).map((m) => (
+                <button
+                  key={m}
+                  type="button"
+                  onClick={() => setViewMode(m)}
+                  className={`rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
+                    viewMode === m ? 'bg-slate-700 text-white shadow-sm' : 'text-slate-600 hover:bg-slate-100'
+                  }`}
+                >
+                  {m}
+                </button>
+              ))}
+            </div>
+
+            <div className="h-6 w-px bg-slate-300" />
+
             <button
               type="button"
               onClick={() => {
@@ -3482,12 +3689,12 @@ export default function PLForecastTab({ scenarioOverride = null }: PLForecastTab
                 <th className="min-w-[130px] border-b border-r border-slate-300 bg-gradient-to-r from-[#3b5f93] to-[#4b6fa3] px-3 py-3 text-center font-semibold text-slate-50">
                   25년(연간)
                 </th>
-                {MONTH_HEADERS.map((month) => (
+                {(viewMode === '분기' ? QUARTER_HEADERS : MONTH_HEADERS).map((label) => (
                   <th
-                    key={month}
-                    className="min-w-[105px] border-b border-r border-slate-300 bg-gradient-to-r from-[#2f4f7f] to-[#3b5f93] px-3 py-3 text-center font-semibold text-slate-50"
+                    key={label}
+                    className={`${viewMode === '분기' ? 'min-w-[130px]' : 'min-w-[105px]'} border-b border-r border-slate-300 bg-gradient-to-r from-[#2f4f7f] to-[#3b5f93] px-3 py-3 text-center font-semibold text-slate-50`}
                   >
-                    {month}
+                    {label}
                   </th>
                 ))}
                 <th className="min-w-[130px] border-b border-r border-slate-300 bg-gradient-to-r from-[#3b5f93] to-[#4b6fa3] px-3 py-3 text-center font-semibold text-slate-50">
@@ -3496,9 +3703,11 @@ export default function PLForecastTab({ scenarioOverride = null }: PLForecastTab
                 <th className="min-w-[100px] border-b border-r border-slate-300 bg-gradient-to-r from-[#4b6fa3] to-[#5c80b1] px-3 py-3 text-center font-semibold text-slate-50">
                   YoY
                 </th>
-                <th className="min-w-[120px] border-b border-slate-300 bg-slate-700 px-3 py-3 text-center font-semibold text-slate-50">
-                  {latestActualMonth > 0 ? `YTD(1~${latestActualMonth}월)` : 'YTD'}
-                </th>
+                {viewMode !== '분기' && (
+                  <th className="min-w-[120px] border-b border-slate-300 bg-slate-700 px-3 py-3 text-center font-semibold text-slate-50">
+                    {latestActualMonth > 0 ? `YTD(1~${latestActualMonth}월)` : 'YTD'}
+                  </th>
+                )}
               </tr>
             </thead>
             <tbody>
@@ -3558,15 +3767,26 @@ export default function PLForecastTab({ scenarioOverride = null }: PLForecastTab
                       </div>
                     </td>
                     <td className={`border-b border-r border-slate-200 px-3 py-2.5 text-right ${isYoyRow ? 'text-slate-400' : 'text-slate-700'}`}>{formatValue(series.annual2025, row.format)}</td>
-                    {MONTH_HEADERS.map((_, monthIndex) => (
-                      <td key={`${row.account}-${monthIndex}`} className={`border-b border-r border-slate-200 px-2.5 py-1.5 text-right ${isYoyRow ? 'text-slate-400' : 'text-slate-700'}`}>
-                        {renderMonthInput(row, monthIndex)}
-                      </td>
-                    ))}
+                    {viewMode === '분기'
+                      ? [0, 1, 2, 3].map((qIdx) => {
+                          const decimals = isYoyRow ? 0 : 1;
+                          const qVal = getQuarterValue(row, qIdx);
+                          return (
+                            <td key={`${row.account}-q${qIdx}`} className={`border-b border-r border-slate-200 px-2.5 py-1.5 text-right ${isYoyRow ? 'text-slate-400' : 'text-slate-700'}`}>
+                              {formatValue(qVal, row.format, decimals)}
+                            </td>
+                          );
+                        })
+                      : MONTH_HEADERS.map((_, monthIndex) => (
+                          <td key={`${row.account}-${monthIndex}`} className={`border-b border-r border-slate-200 px-2.5 py-1.5 text-right ${isYoyRow ? 'text-slate-400' : 'text-slate-700'}`}>
+                            {renderMonthInput(row, monthIndex)}
+                          </td>
+                        ))}
                     <td className={`border-b border-r border-slate-200 px-3 py-2.5 text-right font-medium ${isYoyRow ? 'text-slate-400' : 'text-slate-800'} ${isYoyRow ? '' : isMintRow ? 'bg-emerald-100' : isAdjustGroupRow ? 'bg-highlight-gray' : isProfitFocusRow ? 'bg-sky-100' : 'bg-slate-50'}`}>
                       {formatValue(annual26, row.format, isYoyRow ? 0 : 1)}
                     </td>
                     <td className={`border-b border-r border-slate-200 px-3 py-2.5 text-right ${isYoyRow ? 'text-slate-400' : 'text-slate-500'} ${isYoyRow ? '' : isMintRow ? 'bg-emerald-100' : isAdjustGroupRow ? 'bg-highlight-gray' : isProfitFocusRow ? 'bg-sky-100' : 'bg-slate-50'}`}>{yoyText}</td>
+                    {viewMode !== '분기' && (
                     <td className={`border-b border-slate-200 px-3 py-2.5 text-right font-medium ${isYoyRow ? 'text-slate-400' : 'text-slate-800'} ${isYoyRow ? '' : isMintRow ? 'bg-emerald-100' : isAdjustGroupRow ? 'bg-highlight-gray' : isProfitFocusRow ? 'bg-sky-100' : 'bg-slate-50'}`}>
                       {(() => {
                         if (latestActualMonth <= 0) return '';
@@ -3625,12 +3845,188 @@ export default function PLForecastTab({ scenarioOverride = null }: PLForecastTab
                         return formatValue(ytdValue, row.format);
                       })()}
                     </td>
+                    )}
                   </tr>
                 );
               })}
             </tbody>
           </table>
         </div>
+
+        {/* ─── 대리상 출고표 (26년 매출 보조지표 vs 25년 Tag매출 전처리 YoY) ─── */}
+        {(() => {
+          const brandsForAgg: SalesBrand[] = activeBrand === null
+            ? SALES_BRANDS
+            : [FORECAST_TO_SALES_BRAND[activeBrand as ForecastLeafBrand]];
+          const brandLabel = activeBrand === null
+            ? '법인 (5브랜드 합산)'
+            : brandsForAgg[0];
+          const sumByBrands = (getter: (b: SalesBrand, mi: number) => number | null): (number | null)[] => {
+            const out: (number | null)[] = new Array(12).fill(null);
+            for (let mi = 0; mi < 12; mi += 1) {
+              let sum = 0;
+              let any = false;
+              for (const b of brandsForAgg) {
+                const v = getter(b, mi);
+                if (v != null && Number.isFinite(v)) { sum += v; any = true; }
+              }
+              out[mi] = any ? sum : null;
+            }
+            return out;
+          };
+          // 26년 (실적월 Snowflake + 계획월 OTB×진척률, 내부 CNY → K 변환)
+          const currF_26K = sumByBrands((b, mi) => {
+            const v = salesDerived[`dealerF:${b}`]?.monthly?.[mi];
+            return v == null ? null : v / 1000;
+          });
+          const currS_26K = sumByBrands((b, mi) => {
+            const v = salesDerived[`dealerS:${b}`]?.monthly?.[mi];
+            return v == null ? null : v / 1000;
+          });
+          const acc_26K = sumByBrands((b, mi) => {
+            const v = salesDerived[`dealerACC:${b}`]?.monthly?.[mi];
+            return v == null ? null : v / 1000;
+          });
+          // 25년 (이미 K)
+          const currF_25K = sumByBrands((b, mi) => tagSales2025Data.brands[b]?.['대리상(의류)']?.['25F']?.[mi] ?? null);
+          const currS_25K = sumByBrands((b, mi) => tagSales2025Data.brands[b]?.['대리상(의류)']?.['25S']?.[mi] ?? null);
+          const acc_25K = sumByBrands((b, mi) => {
+            const accCats = tagSales2025Data.brands[b]?.['대리상(ACC)'] ?? {};
+            const firstTag = Object.values(accCats)[0];
+            return firstTag?.[mi] ?? null;
+          });
+          const sumParts = (parts: (number | null)[]): number | null => {
+            const defined = parts.filter((v): v is number => v != null);
+            return defined.length ? defined.reduce((s, v) => s + v, 0) : null;
+          };
+          const total_26K = new Array(12).fill(null).map((_, mi) => sumParts([currF_26K[mi], currS_26K[mi], acc_26K[mi]]));
+          const total_25K = new Array(12).fill(null).map((_, mi) => sumParts([currF_25K[mi], currS_25K[mi], acc_25K[mi]]));
+          const sumArr = (arr: (number | null)[]): number | null => {
+            let s = 0; let any = false;
+            for (const v of arr) if (v != null) { s += v; any = true; }
+            return any ? s : null;
+          };
+          const yoy = (num: number | null, denom: number | null): number | null => {
+            if (num == null || denom == null || denom === 0) return null;
+            return (num / denom) * 100;
+          };
+          // 이 표에서는 0/0%는 표시하지 않음
+          const formatPctRow = (v: number | null): string => {
+            if (v == null) return '';
+            if (Math.round(v) === 0) return '';
+            return `${Math.round(v)}%`;
+          };
+          const formatKRow = (v: number | null): string => {
+            if (v == null || !Number.isFinite(v)) return '';
+            if (Math.round(v) === 0) return '';
+            return Math.round(v).toLocaleString();
+          };
+          const rowDefs: Array<{
+            label: string;
+            isYoy?: boolean;
+            isTotal?: boolean;
+            num: (number | null)[];
+            denom: (number | null)[];
+          }> = [
+            { label: '당년F',     num: currF_26K, denom: currF_25K },
+            { label: 'YoY (F)',   num: currF_26K, denom: currF_25K, isYoy: true },
+            { label: '당년S',     num: currS_26K, denom: currS_25K },
+            { label: 'YoY (S)',   num: currS_26K, denom: currS_25K, isYoy: true },
+            { label: 'ACC',       num: acc_26K,   denom: acc_25K },
+            { label: 'YoY (ACC)', num: acc_26K,   denom: acc_25K,   isYoy: true },
+            { label: '합계',      num: total_26K, denom: total_25K, isTotal: true },
+            { label: 'YoY (합계)',num: total_26K, denom: total_25K, isYoy: true, isTotal: true },
+          ];
+          return (
+            <div className="mt-6 overflow-hidden rounded-2xl border border-slate-200 bg-white/95 shadow-sm">
+              <div className="flex items-center gap-3 border-b border-slate-200 bg-slate-50 px-4 py-2.5">
+                <span className="inline-flex items-center rounded-md bg-[#2f4f7f] px-2 py-0.5 text-xs font-semibold text-white">대리상 출고표</span>
+                <span className="text-xs text-slate-600">{brandLabel} · 26년 월별 vs 25년 동일시즌(25F/25S/ACC) YoY · 단위 K (천위안)</span>
+              </div>
+              <div className="overflow-auto">
+                <table className="w-full border-separate border-spacing-0 text-sm">
+                  <thead>
+                    <tr>
+                      <th className="sticky left-0 z-10 min-w-[260px] border-b border-r border-slate-300 bg-slate-800 px-3 py-2 text-center font-semibold text-slate-100">구분</th>
+                      <th className="min-w-[130px] border-b border-r border-slate-300 bg-slate-700 px-3 py-2 text-center font-semibold text-slate-100">전년 연간</th>
+                      {(viewMode === '분기' ? QUARTER_HEADERS : MONTH_HEADERS).map((label) => (
+                        <th key={`dealer-ship-h-${label}`} className={`${viewMode === '분기' ? 'min-w-[130px]' : 'min-w-[105px]'} border-b border-r border-slate-300 bg-slate-800 px-3 py-2 text-center font-semibold text-slate-100`}>
+                          {label}
+                        </th>
+                      ))}
+                      <th className="min-w-[130px] border-b border-r border-slate-300 bg-slate-700 px-3 py-2 text-center font-semibold text-slate-100">연간</th>
+                      {viewMode !== '분기' && (
+                        <th className="min-w-[120px] border-b border-slate-300 bg-slate-700 px-3 py-2 text-center font-semibold text-slate-100">
+                          {latestActualMonth > 0 ? `YTD(1~${latestActualMonth}월)` : 'YTD'}
+                        </th>
+                      )}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {rowDefs.map((r) => {
+                      const rowCls = r.isYoy
+                        ? 'italic'
+                        : r.isTotal
+                          ? 'bg-slate-100 font-semibold'
+                          : 'bg-sky-50';
+                      const sumRange = (arr: (number | null)[], start: number, end: number): number | null => {
+                        let s = 0; let any = false;
+                        for (let i = start; i < end; i += 1) {
+                          const v = arr[i];
+                          if (v != null && Number.isFinite(v)) { s += v; any = true; }
+                        }
+                        return any ? s : null;
+                      };
+                      return (
+                        <tr key={`dealer-ship-${r.label}`} className={rowCls}>
+                          <td className="sticky left-0 z-10 border-b border-r border-slate-200 bg-inherit px-3 py-2 text-slate-800" style={r.isYoy ? { paddingLeft: 28 } : undefined}>
+                            {r.label}
+                          </td>
+                          <td className="border-b border-r border-slate-200 bg-slate-50 px-3 py-2 text-right font-medium">
+                            {r.isYoy ? '' : formatKRow(sumArr(r.denom))}
+                          </td>
+                          {viewMode === '분기'
+                            ? [0, 1, 2, 3].map((qi) => {
+                                const start = qi * 3;
+                                const end = start + 3;
+                                return (
+                                  <td key={`dealer-ship-${r.label}-q${qi}`} className="border-b border-r border-slate-200 px-3 py-2 text-right">
+                                    {r.isYoy
+                                      ? formatPctRow(yoy(sumRange(r.num, start, end), sumRange(r.denom, start, end)))
+                                      : formatKRow(sumRange(r.num, start, end))}
+                                  </td>
+                                );
+                              })
+                            : MONTH_HEADERS.map((_, mi) => (
+                                <td key={`dealer-ship-${r.label}-${mi}`} className="border-b border-r border-slate-200 px-3 py-2 text-right">
+                                  {r.isYoy
+                                    ? formatPctRow(yoy(r.num[mi], r.denom[mi]))
+                                    : formatKRow(r.num[mi])}
+                                </td>
+                              ))}
+                          <td className="border-b border-r border-slate-200 bg-slate-50 px-3 py-2 text-right font-medium">
+                            {r.isYoy
+                              ? formatPctRow(yoy(sumArr(r.num), sumArr(r.denom)))
+                              : formatKRow(sumArr(r.num))}
+                          </td>
+                          {viewMode !== '분기' && (
+                            <td className="border-b border-slate-200 bg-slate-50 px-3 py-2 text-right font-medium">
+                              {latestActualMonth <= 0
+                                ? ''
+                                : r.isYoy
+                                  ? formatPctRow(yoy(sumRange(r.num, 0, latestActualMonth), sumRange(r.denom, 0, latestActualMonth)))
+                                  : formatKRow(sumRange(r.num, 0, latestActualMonth))}
+                            </td>
+                          )}
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          );
+        })()}
 
         <div className="mt-3 rounded-xl border border-slate-200 bg-white/85 px-4 py-3 text-xs text-slate-600 shadow-sm">
           <button
@@ -3736,6 +4132,243 @@ export default function PLForecastTab({ scenarioOverride = null }: PLForecastTab
           )}
         </div>
 
+        {/* ─── Tag매출 전처리 (Snowflake 직접, in-memory 캐시, 연도별 토글) ── */}
+        <div className="mt-8 rounded-2xl border border-slate-200 bg-slate-50/85 shadow-sm">
+          <div className="flex w-full items-center gap-3 px-4 py-3">
+            <button
+              type="button"
+              onClick={() => setTagSales2025SectionOpen((prev) => !prev)}
+              className="flex flex-1 items-center gap-3 text-left"
+            >
+              <span className="inline-flex h-6 w-6 items-center justify-center rounded-md bg-[#6b5a9a] text-xs text-white">
+                Tg
+              </span>
+              <div className="flex-1 flex items-center gap-6">
+                <div className="shrink-0">
+                  <div className="text-sm font-semibold text-slate-800">25/26년 Tag매출 실적 🟡전처리</div>
+                  <div className="text-xs text-slate-500">
+                    Snowflake 직접 쿼리 (서버 12시간 캐시) · 단위 K (천위안)
+                    {tagSalesSelectedYear === 2026 && latestActualMonth > 0 ? ` · 1~${latestActualMonth}월 결산 표시` : ''}
+                  </div>
+                </div>
+                <div className="font-mono font-semibold text-violet-700 text-xs">sap_fnf.dw_cn_copa_d → 전처리 SQL (5브랜드 × 직영·대리상(ACC)·대리상(의류))</div>
+              </div>
+            </button>
+            {/* 연도 토글 */}
+            <div className="flex items-center gap-0 rounded-lg border border-slate-300 bg-white p-0.5 shadow-sm">
+              {([2025, 2026] as const).map((y) => (
+                <button
+                  key={y}
+                  type="button"
+                  onClick={(e) => { e.stopPropagation(); setTagSalesSelectedYear(y); }}
+                  className={`rounded-md px-3 py-1 text-xs font-medium transition-colors ${
+                    tagSalesSelectedYear === y ? 'bg-violet-600 text-white shadow-sm' : 'text-slate-600 hover:bg-slate-100'
+                  }`}
+                >
+                  {y}
+                </button>
+              ))}
+            </div>
+            <div className="text-xs text-slate-500">
+              {(tagSalesSelectedYear === 2025 ? tagSales2025Loading : tagSales2026Loading)
+                ? '불러오는 중...'
+                : (tagSalesSelectedYear === 2025 ? tagSales2025Error : tagSales2026Error)
+                  ? '오류'
+                  : `${tagSalesSelectedYear}년 실적`}
+            </div>
+            <button
+              type="button"
+              onClick={() => setTagSales2025SectionOpen((prev) => !prev)}
+              className="text-xs text-slate-500"
+            >
+              {tagSales2025SectionOpen ? '접기' : '펼치기'}
+            </button>
+          </div>
+
+          {tagSales2025SectionOpen && (() => {
+            const activeData = tagSalesSelectedYear === 2025 ? tagSales2025Data : tagSales2026Data;
+            const activeError = tagSalesSelectedYear === 2025 ? tagSales2025Error : tagSales2026Error;
+            const tagSales2025ByBrand = activeData.brands;
+            const tagSales2025ClothingTags = activeData.clothingTags;
+            // 2026년은 실적월까지만 숫자 표시 (이후 월은 공백)
+            const maxMonthIdx = tagSalesSelectedYear === 2026 ? Math.max(0, latestActualMonth) : 12;
+            const getVal = (series: (number | null)[] | undefined, mi: number): number | null => {
+              if (mi >= maxMonthIdx) return null;
+              return series?.[mi] ?? null;
+            };
+            return (
+            <>
+              {activeError ? (
+                <div className="border-t border-slate-200 px-4 py-4 text-sm text-red-500">{activeError}</div>
+              ) : (
+                <div className="border-t border-slate-200 p-4">
+                  <div className="overflow-auto rounded-xl border border-slate-200 bg-white">
+                    <table className="w-full border-separate border-spacing-0 text-sm">
+                      <thead className="sticky top-0 z-10">
+                        <tr>
+                          <th className="min-w-[110px] border-b border-r border-slate-300 bg-slate-800 px-3 py-2 text-center font-semibold text-slate-100">브랜드</th>
+                          <th className="min-w-[140px] border-b border-r border-slate-300 bg-slate-800 px-3 py-2 text-center font-semibold text-slate-100">구분</th>
+                          <th className="min-w-[100px] border-b border-r border-slate-300 bg-slate-800 px-3 py-2 text-center font-semibold text-slate-100">태그</th>
+                          {MONTH_HEADERS.map((m) => (
+                            <th key={`tag2025-${m}`} className="min-w-[90px] border-b border-r border-slate-300 bg-slate-800 px-3 py-2 text-center font-semibold text-slate-100 last:border-r-0">
+                              {m}
+                            </th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {(() => {
+                          const rows: JSX.Element[] = [];
+                          const sumSeriesArr = (seriesList: ((number | null)[] | undefined)[]): (number | null)[] => {
+                            const result = new Array(12).fill(null) as (number | null)[];
+                            for (const s of seriesList) {
+                              if (!s) continue;
+                              for (let i = 0; i < 12; i += 1) {
+                                const v = s[i];
+                                if (v == null) continue;
+                                result[i] = (result[i] ?? 0) + v;
+                              }
+                            }
+                            return result;
+                          };
+
+                          for (const brand of SALES_BRANDS) {
+                            const brandData = tagSales2025ByBrand[brand];
+                            if (!brandData) continue;
+                            const clothing = brandData['대리상(의류)'];
+                            const clothSeriesList = Object.values(clothing);
+                            const clothTotal = sumSeriesArr(clothSeriesList);
+                            // 브랜드 합계 = 직영 + 대리상(ACC) + 대리상(의류) 전체
+                            const brandTotal = sumSeriesArr([
+                              ...Object.values(brandData['직영']),
+                              ...Object.values(brandData['대리상(ACC)']),
+                              ...clothSeriesList,
+                            ]);
+                            const brandCollapsed = tagSales2025BrandCollapsed.has(brand);
+                            const clothCollapsed = tagSales2025ClothCollapsed.has(brand);
+
+                            // 브랜드 합계 행 (토글 헤더)
+                            rows.push(
+                              <tr key={`tag2025-brand-${brand}`} className="bg-slate-100 font-semibold">
+                                <td className="border-b border-r border-slate-200 px-3 py-2">
+                                  <div className="flex items-center justify-between gap-2">
+                                    <span className="text-slate-800">{brand}</span>
+                                    <button
+                                      type="button"
+                                      onClick={() => setTagSales2025BrandCollapsed((prev) => {
+                                        const next = new Set(prev);
+                                        if (next.has(brand)) next.delete(brand); else next.add(brand);
+                                        return next;
+                                      })}
+                                      className="inline-flex h-5 w-5 items-center justify-center rounded border border-slate-300 bg-white text-[11px] text-slate-500"
+                                    >
+                                      {brandCollapsed ? '+' : '-'}
+                                    </button>
+                                  </div>
+                                </td>
+                                <td className="border-b border-r border-slate-200 px-3 py-2 text-slate-700" colSpan={2}>합계</td>
+                                {MONTH_HEADERS.map((_, mi) => (
+                                  <td key={`tag2025-total-${brand}-${mi}`} className="border-b border-r border-slate-200 px-3 py-2 text-right text-slate-800 last:border-r-0">
+                                    {formatKAmount(getVal(brandTotal, mi))}
+                                  </td>
+                                ))}
+                              </tr>,
+                            );
+
+                            if (brandCollapsed) continue;
+
+                            const renderLeafRow = (grp: '직영' | '대리상(ACC)' | '대리상(의류)', tag: string, series: (number | null)[] | undefined, stripe: number) => {
+                              const bg = stripe % 2 === 0 ? 'bg-white' : 'bg-slate-50/50';
+                              rows.push(
+                                <tr key={`tag2025-${brand}-${grp}-${tag}`} className={bg}>
+                                  <td className="border-b border-r border-slate-200 px-3 py-2" />
+                                  <td className="border-b border-r border-slate-200 px-3 py-2 text-slate-700">{grp}</td>
+                                  <td className="border-b border-r border-slate-200 px-3 py-2 text-slate-600">{tag}</td>
+                                  {MONTH_HEADERS.map((_, mi) => (
+                                    <td key={`tag2025-${brand}-${grp}-${tag}-${mi}`} className="border-b border-r border-slate-200 px-3 py-2 text-right text-slate-700 last:border-r-0">
+                                      {formatKAmount(getVal(series, mi))}
+                                    </td>
+                                  ))}
+                                </tr>,
+                              );
+                            };
+
+                            let stripe = 0;
+                            // 직영
+                            const directEntries = Object.entries(brandData['직영']);
+                            if (directEntries.length > 0) {
+                              for (const [tag, series] of directEntries) renderLeafRow('직영', tag, series, stripe++);
+                            }
+                            // 대리상(ACC)
+                            const accEntries = Object.entries(brandData['대리상(ACC)']);
+                            if (accEntries.length > 0) {
+                              for (const [tag, series] of accEntries) renderLeafRow('대리상(ACC)', tag, series, stripe++);
+                            }
+                            // 대리상(의류) 합계 + 토글
+                            if (clothSeriesList.length > 0) {
+                              const bg = stripe % 2 === 0 ? 'bg-white' : 'bg-slate-50/50';
+                              rows.push(
+                                <tr key={`tag2025-cloth-total-${brand}`} className={`${bg} font-medium`}>
+                                  <td className="border-b border-r border-slate-200 px-3 py-2" />
+                                  <td className="border-b border-r border-slate-200 px-3 py-2 text-slate-700">
+                                    <div className="flex items-center justify-between gap-2">
+                                      <span>대리상(의류)</span>
+                                      <button
+                                        type="button"
+                                        onClick={() => setTagSales2025ClothCollapsed((prev) => {
+                                          const next = new Set(prev);
+                                          if (next.has(brand)) next.delete(brand); else next.add(brand);
+                                          return next;
+                                        })}
+                                        className="inline-flex h-5 w-5 items-center justify-center rounded border border-slate-300 bg-white text-[11px] text-slate-500"
+                                      >
+                                        {clothCollapsed ? '+' : '-'}
+                                      </button>
+                                    </div>
+                                  </td>
+                                  <td className="border-b border-r border-slate-200 px-3 py-2 text-slate-600">합계</td>
+                                  {MONTH_HEADERS.map((_, mi) => (
+                                    <td key={`tag2025-cloth-total-${brand}-${mi}`} className="border-b border-r border-slate-200 px-3 py-2 text-right text-slate-800 last:border-r-0">
+                                      {formatKAmount(getVal(clothTotal, mi))}
+                                    </td>
+                                  ))}
+                                </tr>,
+                              );
+                              stripe++;
+                              if (!clothCollapsed) {
+                                const tagsForBrand = tagSales2025ClothingTags.filter((t) => clothing[t] !== undefined);
+                                const ordered = tagsForBrand.length > 0 ? tagsForBrand : Object.keys(clothing);
+                                for (const tag of ordered) {
+                                  const bg2 = stripe % 2 === 0 ? 'bg-white' : 'bg-slate-50/50';
+                                  rows.push(
+                                    <tr key={`tag2025-${brand}-cloth-${tag}`} className={bg2}>
+                                      <td className="border-b border-r border-slate-200 px-3 py-2" />
+                                      <td className="border-b border-r border-slate-200 px-3 py-2 text-slate-400" />
+                                      <td className="border-b border-r border-slate-200 px-3 py-2 text-slate-600" style={{ paddingLeft: 28 }}>└ {tag}</td>
+                                      {MONTH_HEADERS.map((_, mi) => (
+                                        <td key={`tag2025-${brand}-cloth-${tag}-${mi}`} className="border-b border-r border-slate-200 px-3 py-2 text-right text-slate-700 last:border-r-0">
+                                          {formatKAmount(getVal(clothing[tag], mi))}
+                                        </td>
+                                      ))}
+                                    </tr>,
+                                  );
+                                  stripe++;
+                                }
+                              }
+                            }
+                          }
+                          return rows;
+                        })()}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+            </>
+            );
+          })()}
+        </div>
+
         <div className="mt-8 rounded-2xl border border-slate-200 bg-slate-50/85 shadow-sm">
           <button
             type="button"
@@ -3747,14 +4380,14 @@ export default function PLForecastTab({ scenarioOverride = null }: PLForecastTab
             </span>
             <div className="flex-1 flex items-center gap-6">
               <div className="shrink-0">
-                <div className="text-sm font-semibold text-slate-800">매출 보조지표 🟢Live</div>
-                <div className="text-xs text-slate-500">브랜드/채널/시즌별 월 매출 계획 (OTB 연동)</div>
+                <div className="text-sm font-semibold text-slate-800">매출 보조지표 🟡전처리(실적)·🟢계산(계획)</div>
+                <div className="text-xs text-slate-500">실적월 = Snowflake 25/26 Tag매출 전처리, 계획월 = OTB × 진척률 자동 배분</div>
               </div>
               <div className="text-left text-xs text-slate-800 leading-relaxed">
-                <div className="font-mono font-semibold text-blue-600 mb-0.5">보조파일(simu)/매출보조지표_actual/2026-MM.csv</div>
-                <div>당년S/F: 실적월 CSV → 잔여(OTB-실적합) × 전년진척률 배분</div>
-                <div>1년차: 잔여 × 당년F 진척률 배분&nbsp;|&nbsp;차기시즌: 잔여 ÷ 2 → 11·12월 균등</div>
-                <div>ACC: 실적월 CSV → 잔여 × ACC출고비율 배분</div>
+                <div className="font-mono font-semibold text-blue-600 mb-0.5">실적월: Snowflake sap_fnf.dw_cn_copa_d (25/26 Tag매출 전처리)</div>
+                <div>당년S/F: 실적 Snowflake(26S/26F) · 계획 = 잔여(OTB-실적합) × 전년진척률 배분</div>
+                <div>1년차: 실적 Snowflake(25S+25F) · 계획 = 잔여 × 당년F 진척률 배분&nbsp;|&nbsp;차기시즌: 실적 Snowflake(27+) · 계획 = 잔여 ÷ 2 → 11·12월 균등</div>
+                <div>ACC: 실적 Snowflake(대리상(ACC)) · 계획 = 잔여 × ACC출고비율 배분</div>
               </div>
             </div>
             <span className="text-xs text-slate-500">{salesSectionOpen ? '접기' : '펼치기'}</span>

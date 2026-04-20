@@ -19,6 +19,7 @@ export const FORECAST_BRANDS: { id: string | null; label: string }[] = [
 ];
 
 export const MONTH_HEADERS = ['1월', '2월', '3월', '4월', '5월', '6월', '7월', '8월', '9월', '10월', '11월', '12월'];
+export const QUARTER_HEADERS = ['1Q', '2Q', '3Q', '4Q'];
 
 export const RAW_ACCOUNTS: string[] = [
   'Tag매출',

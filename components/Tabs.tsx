@@ -1,6 +1,17 @@
 'use client';
 
 import { useEffect, useMemo, useRef, useState } from 'react';
+import {
+  LayoutDashboard,
+  BarChart3,
+  Scale,
+  Banknote,
+  CreditCard,
+  Boxes,
+  LineChart,
+  Wallet,
+  type LucideIcon,
+} from 'lucide-react';
 
 interface TabGroup {
   id: string;
@@ -14,6 +25,17 @@ interface TabsProps {
   onChange: (index: number) => void;
   groups?: TabGroup[];
 }
+
+const TAB_ICONS: LucideIcon[] = [
+  LayoutDashboard, // 경영요약
+  BarChart3,       // 손익계산서
+  Scale,           // 재무상태표
+  Banknote,        // 현금흐름표
+  CreditCard,      // 여신사용현황
+  Boxes,           // 재고자산 (sim)
+  LineChart,       // PL (sim)
+  Wallet,          // CF (sim)
+];
 
 export default function Tabs({ tabs, activeTab, onChange, groups }: TabsProps) {
   const ADMIN_PW = process.env.NEXT_PUBLIC_ADMIN_PW ?? '';
@@ -113,28 +135,30 @@ export default function Tabs({ tabs, activeTab, onChange, groups }: TabsProps) {
   };
 
   return (
-    <div className="fixed top-0 left-0 right-0 z-50 border-b border-white/20 bg-gradient-to-r from-[#173a72]/95 via-[#2458a6]/95 to-[#1c3f7b]/95 shadow-[0_8px_28px_rgba(8,22,49,0.32)] backdrop-blur-md">
+    <div className="fixed top-14 left-0 right-0 z-40 border-b border-slate-200 bg-slate-50 shadow-[0_1px_3px_rgba(0,0,0,0.04)]">
       <div className="flex items-center gap-2 px-3 py-2 sm:px-4">
         <div className="flex-1 overflow-x-auto">
-          <div className="mx-auto flex min-w-max items-center gap-2">
-            {visibleTabs.map(({ tab, index }) => (
-              <button
-                key={index}
-                onClick={() => onChange(index)}
-                className={`
-                  relative whitespace-nowrap rounded-xl px-4 py-2.5 text-sm font-semibold tracking-[0.01em] transition-all duration-200
-                  ${activeTab === index
-                    ? 'bg-white/18 text-white shadow-[inset_0_0_0_1px_rgba(255,255,255,0.28),0_8px_20px_rgba(5,16,37,0.22)]'
-                    : 'text-blue-100/90 hover:bg-white/10 hover:text-white'}
-                `}
-                aria-current={activeTab === index ? 'page' : undefined}
-              >
-                {tab}
-                {activeTab === index && (
-                  <span className="absolute -bottom-[3px] left-1/2 h-1.5 w-8 -translate-x-1/2 rounded-full bg-accent-yellow shadow-[0_0_12px_rgba(242,201,76,0.65)]" />
-                )}
-              </button>
-            ))}
+          <div className="mx-auto flex min-w-max items-center gap-1.5">
+            {visibleTabs.map(({ tab, index }) => {
+              const Icon = TAB_ICONS[index];
+              const isActive = activeTab === index;
+              return (
+                <button
+                  key={index}
+                  onClick={() => onChange(index)}
+                  className={`
+                    relative flex items-center gap-2 whitespace-nowrap rounded-xl px-4 py-2 text-sm font-semibold tracking-tight transition-all duration-150
+                    ${isActive
+                      ? 'bg-white text-[#1e3a8a] shadow-[0_2px_8px_rgba(30,58,138,0.12),0_0_0_1px_rgba(30,58,138,0.08)] -translate-y-px'
+                      : 'text-slate-500 hover:bg-slate-100 hover:text-slate-700'}
+                  `}
+                  aria-current={isActive ? 'page' : undefined}
+                >
+                  {Icon && <Icon className="h-4 w-4" strokeWidth={isActive ? 2.25 : 2} />}
+                  {tab}
+                </button>
+              );
+            })}
           </div>
         </div>
 
@@ -149,8 +173,8 @@ export default function Tabs({ tabs, activeTab, onChange, groups }: TabsProps) {
                   onClick={() => toggleGroup(group.id)}
                   className={`rounded-lg px-2.5 py-1 text-xs font-semibold transition-colors ${
                     hiddenGroups[group.id]
-                      ? 'bg-white/10 text-blue-100 hover:bg-white/15'
-                      : 'bg-white/20 text-white hover:bg-white/30'
+                      ? 'bg-slate-200 text-slate-600 hover:bg-slate-300'
+                      : 'bg-[#1e3a8a] text-white hover:bg-[#1e40af]'
                   }`}
                 >
                   {group.label} {hiddenGroups[group.id] ? '표시' : '숨기기'}
@@ -178,14 +202,14 @@ export default function Tabs({ tabs, activeTab, onChange, groups }: TabsProps) {
                 onKeyDown={(e) => { if (e.key === 'Enter') handlePwSubmit(); if (e.key === 'Escape') { setShowPwInput(false); setPwInput(''); } }}
                 placeholder="비밀번호"
                 autoFocus
-                className={`w-24 rounded-lg px-2 py-1 text-xs bg-white/10 text-white placeholder-white/40 border outline-none ${
-                  pwError ? 'border-red-400' : 'border-white/20 focus:border-white/50'
+                className={`w-24 rounded-lg px-2 py-1 text-xs bg-white text-slate-700 placeholder-slate-400 border outline-none ${
+                  pwError ? 'border-red-400' : 'border-slate-300 focus:border-[#1e3a8a]'
                 }`}
               />
               <button
                 type="button"
                 onClick={handlePwSubmit}
-                className="rounded-lg bg-white/20 px-2 py-1 text-xs text-white hover:bg-white/30"
+                className="rounded-lg bg-[#1e3a8a] px-2 py-1 text-xs text-white hover:bg-[#1e40af]"
               >
                 확인
               </button>
@@ -197,7 +221,7 @@ export default function Tabs({ tabs, activeTab, onChange, groups }: TabsProps) {
             type="button"
             onClick={handleLockClick}
             title={isUnlocked ? '잠금' : '관리자 잠금 해제'}
-            className="rounded-lg px-2 py-1 text-sm text-white/40 hover:text-white/80 transition-colors"
+            className="rounded-lg px-2 py-1 text-sm text-slate-400 hover:text-slate-700 transition-colors"
           >
             {isUnlocked ? '🔓' : '🔒'}
           </button>
@@ -206,6 +230,3 @@ export default function Tabs({ tabs, activeTab, onChange, groups }: TabsProps) {
     </div>
   );
 }
-
-
-

@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useMemo, useRef } from 'react';
+import { ChevronDown, ChevronRight } from 'lucide-react';
 import { CreditData, CreditRecoveryData } from '@/lib/types';
 import { formatNumber, getRecoveryMonthLabelsAsN월 } from '@/lib/utils';
 
@@ -50,29 +51,29 @@ export default function CreditStatus({ data, creditRecoveryData = null }: Credit
   return (
     <div className="space-y-6">
       {/* 상단 카드 2개 */}
-      <div className="grid grid-cols-2 gap-6">
+      <div className="grid grid-cols-2 gap-4">
         {/* 총여신현황 카드 */}
-        <div className="bg-sky-100 border border-sky-300 rounded-lg p-6">
+        <div className="rounded-2xl bg-blue-50/40 ring-1 ring-blue-100 shadow-sm p-5">
           <div className="flex items-center gap-2 mb-4">
-            <span className="text-2xl">📊</span>
-            <h3 className="text-lg font-semibold text-sky-900">총 여신 현황</h3>
+            <span className="text-xl">📊</span>
+            <h3 className="text-base font-bold text-blue-700">총 여신 현황</h3>
           </div>
-          <div className="space-y-3">
+          <div className="space-y-2.5">
             <div className="flex justify-between items-center">
-              <span className="text-gray-700">외상매출금:</span>
-              <span className="text-lg font-semibold text-gray-900">
+              <span className="text-sm text-slate-600">외상매출금</span>
+              <span className="text-lg font-bold text-blue-700">
                 {formatNumber(data.total.외상매출금)}
               </span>
             </div>
             <div className="flex justify-between items-center">
-              <span className="text-gray-700">선수금:</span>
-              <span className="text-lg font-semibold text-gray-900">
+              <span className="text-sm text-slate-600">선수금</span>
+              <span className="text-lg font-bold text-blue-700">
                 {formatNumber(data.total.선수금)}
               </span>
             </div>
-            <div className="flex justify-between items-center pt-3 border-t border-sky-300">
-              <span className="text-gray-700 font-semibold">순여신:</span>
-              <span className="text-xl font-bold text-red-600">
+            <div className="flex justify-between items-center pt-2.5 border-t border-blue-100">
+              <span className="text-sm font-semibold text-slate-700">순여신</span>
+              <span className="text-2xl font-bold text-red-600">
                 {formatNumber(data.total.순여신)}
               </span>
             </div>
@@ -80,27 +81,27 @@ export default function CreditStatus({ data, creditRecoveryData = null }: Credit
         </div>
 
         {/* 리스크 분석 카드 */}
-        <div className="bg-orange-100 border border-orange-300 rounded-lg p-6">
+        <div className="rounded-2xl bg-orange-50/40 ring-1 ring-orange-100 shadow-sm p-5">
           <div className="flex items-center gap-2 mb-4">
-            <span className="text-2xl">⚠️</span>
-            <h3 className="text-lg font-semibold text-orange-900">리스크 분석(순여신 잔액 기준)</h3>
+            <span className="text-xl">⚠️</span>
+            <h3 className="text-base font-bold text-orange-700">리스크 분석(순여신 잔액 기준)</h3>
           </div>
-          <div className="space-y-3">
+          <div className="space-y-2.5">
             <div className="flex justify-between items-center">
-              <span className="text-gray-700">상위 17개 비율:</span>
-              <span className="text-lg font-semibold text-gray-900">
+              <span className="text-sm text-slate-600">상위 17개 비율</span>
+              <span className="text-lg font-bold text-orange-700">
                 {data.analysis.top17Ratio.toFixed(1)}%
               </span>
             </div>
             <div className="flex justify-between items-center">
-              <span className="text-gray-700">최대 거래처 비율:</span>
-              <span className="text-lg font-semibold text-gray-900">
+              <span className="text-sm text-slate-600">최대 거래처 비율</span>
+              <span className="text-lg font-bold text-orange-700">
                 {data.analysis.top1Ratio.toFixed(1)}%
               </span>
             </div>
-            <div className="flex justify-between items-center pt-3 border-t border-orange-300">
-              <span className="text-gray-700 font-semibold">집중 리스크:</span>
-              <span className={`text-xl font-bold ${data.analysis.riskLevel === '높음' ? 'text-red-600' : 'text-green-600'}`}>
+            <div className="flex justify-between items-center pt-2.5 border-t border-orange-100">
+              <span className="text-sm font-semibold text-slate-700">집중 리스크</span>
+              <span className={`text-2xl font-bold ${data.analysis.riskLevel === '높음' ? 'text-red-600' : 'text-emerald-600'}`}>
                 {data.analysis.riskLevel}
               </span>
             </div>
@@ -109,16 +110,19 @@ export default function CreditStatus({ data, creditRecoveryData = null }: Credit
       </div>
 
       {/* 테이블 */}
-      <div className="relative">
+      <div className="relative overflow-auto rounded-2xl border border-slate-200 shadow-sm">
         <table className="w-full border-collapse text-sm">
           <thead className="sticky top-0 z-30 bg-navy text-white">
             <tr>
               <th className="border border-gray-300 py-3 px-4 text-center sticky top-0 left-0 z-40 bg-navy min-w-[60px]">
                 <button
                   onClick={() => setCollapsed(!collapsed)}
-                  className="text-white hover:text-yellow-300 transition-colors"
+                  className="inline-flex items-center gap-1 text-white hover:text-yellow-300 transition-colors"
                 >
-                  {collapsed ? '▶' : '▼'} 정렬
+                  {collapsed
+                    ? <ChevronRight className="h-3.5 w-3.5" strokeWidth={2.5} />
+                    : <ChevronDown className="h-3.5 w-3.5" strokeWidth={2.5} />}
+                  정렬
                 </button>
               </th>
               <th className="border border-gray-300 py-3 px-4 text-left min-w-[300px]">
@@ -139,7 +143,10 @@ export default function CreditStatus({ data, creditRecoveryData = null }: Credit
             {/* 1. 합계 행 (맨 위, 연한 하늘색) */}
             <tr className="bg-sky-100 font-bold">
               <td className="border border-gray-300 py-3 px-4 text-center sticky left-0 z-20 bg-sky-100">
-                ▼ 합계
+                <span className="inline-flex items-center gap-1">
+                  <ChevronDown className="h-3.5 w-3.5" strokeWidth={2.5} />
+                  합계
+                </span>
               </td>
               <td className="border border-gray-300 py-3 px-4"></td>
               <td className="border border-gray-300 py-3 px-4 text-right">
@@ -194,9 +201,11 @@ export default function CreditStatus({ data, creditRecoveryData = null }: Credit
                   <td className="border border-gray-300 py-2 px-4 text-center sticky left-0 z-20 bg-gray-100">
                     <button
                       onClick={() => setOthersCollapsed(!othersCollapsed)}
-                      className="text-gray-700 hover:text-gray-900 transition-colors"
+                      className="inline-flex items-center text-slate-500 hover:text-slate-700 transition-colors"
                     >
-                      {othersCollapsed ? '▶' : '▼'}
+                      {othersCollapsed
+                        ? <ChevronRight className="h-3.5 w-3.5" strokeWidth={2.5} />
+                        : <ChevronDown className="h-3.5 w-3.5" strokeWidth={2.5} />}
                     </button>
                   </td>
                   <td className="border border-gray-300 py-2 px-4 font-semibold">
@@ -240,75 +249,65 @@ export default function CreditStatus({ data, creditRecoveryData = null }: Credit
       </div>
 
       {/* 분석 내용 */}
-      <div className="space-y-4 mt-6">
+      <div className="grid grid-cols-2 gap-4 mt-6">
         {/* 여신 현황 요약 */}
-        <div className="bg-orange-50 border-l-4 border-orange-400 p-4 rounded">
-          <div className="flex items-start gap-2">
-            <span className="text-xl">📊</span>
-            <div>
-              <h4 className="font-semibold text-orange-900 mb-2">여신 현황 요약</h4>
-              <ul className="list-disc list-inside space-y-1 text-sm text-gray-700">
-                <li>
-                  <strong>총 외상매출금:</strong> {formatNumber(data.total.외상매출금)} 
-                  (전체 {data.dealers.length}개 대리상)
-                </li>
-                <li>
-                  <strong>총 선수금:</strong> {formatNumber(data.total.선수금)}
-                </li>
-                <li>
-                  <strong>순여신:</strong> {formatNumber(data.total.순여신)} 
-                  <span className="text-red-600 font-semibold"> (= 외상매출금 - 선수금)</span>
-                </li>
-                <li>
-                  <strong>상위 17개 대리상 집중도:</strong> {data.analysis.top17Ratio.toFixed(1)}%
-                  {data.top17[0] && (
-                    <span> - {data.top17[0].name} 최대 거래처 ({data.analysis.top1Ratio.toFixed(1)}%)</span>
-                  )}
-                </li>
-                {data.others.count > 0 && (
-                  <li>
-                    <strong>기타 대리상:</strong> {data.others.count}개, 외상매출금 {formatNumber(data.others.외상매출금)}, 순여신 {formatNumber(data.others.순여신)}
-                  </li>
-                )}
-              </ul>
-            </div>
-          </div>
+        <div className="rounded-2xl bg-blue-50/40 ring-1 ring-blue-100 shadow-sm p-5">
+          <h4 className="font-bold text-blue-700 mb-3 flex items-center gap-2">📊 여신 현황 요약</h4>
+          <ul className="list-disc list-inside space-y-1.5 text-sm text-slate-700 leading-relaxed">
+            <li>
+              <strong>총 외상매출금:</strong> {formatNumber(data.total.외상매출금)}
+              (전체 {data.dealers.length}개 대리상)
+            </li>
+            <li>
+              <strong>총 선수금:</strong> {formatNumber(data.total.선수금)}
+            </li>
+            <li>
+              <strong>순여신:</strong> {formatNumber(data.total.순여신)}
+              <span className="text-red-600 font-semibold"> (= 외상매출금 - 선수금)</span>
+            </li>
+            <li>
+              <strong>상위 17개 대리상 집중도:</strong> {data.analysis.top17Ratio.toFixed(1)}%
+              {data.top17[0] && (
+                <span> - {data.top17[0].name} 최대 거래처 ({data.analysis.top1Ratio.toFixed(1)}%)</span>
+              )}
+            </li>
+            {data.others.count > 0 && (
+              <li>
+                <strong>기타 대리상:</strong> {data.others.count}개, 외상매출금 {formatNumber(data.others.외상매출금)}, 순여신 {formatNumber(data.others.순여신)}
+              </li>
+            )}
+          </ul>
         </div>
 
         {/* 여신 관리 포인트 */}
-        <div className="bg-orange-50 border-l-4 border-orange-400 p-4 rounded">
-          <div className="flex items-start gap-2">
-            <span className="text-xl">⚠️</span>
-            <div>
-              <h4 className="font-semibold text-orange-900 mb-2">여신 관리 포인트</h4>
-              <ul className="list-disc list-inside space-y-1 text-sm text-gray-700">
-                <li>
-                  <strong>상위 17개 대리상의 집중도</strong>가 {data.analysis.top17Ratio.toFixed(1)}%로 {data.analysis.top17Ratio > 70 ? '지속 위험 수준' : '적정 수준'}
-                  {data.top17[0] && data.analysis.top1Ratio > 20 && (
-                    <span> - <strong>{data.top17[0].name}</strong> 최대 거래처 ({data.analysis.top1Ratio.toFixed(1)}%)의 회수 차질 시 영향 큼</span>
-                  )}
-                </li>
-                <li>
-                  <strong>총 외상매출금:</strong> {formatNumber(data.total.외상매출금)} (전체 {data.dealers.length}개 대리상)
-                </li>
-                <li>
-                  <strong>순여신:</strong> {formatNumber(data.total.순여신)} 
-                  {data.total.순여신 > 0 && (
-                    <span className="text-red-600"> - 회수 진행 필요</span>
-                  )}
-                  {data.total.순여신 <= 0 && (
-                    <span className="text-green-600"> - 양호한 상태</span>
-                  )}
-                </li>
-                <li>
-                  <strong>지속적인 신용평가</strong> 및 여신 회수 독촉 필요
-                  {data.analysis.riskLevel === '높음' && (
-                    <span className="text-red-600 font-semibold"> - 리스크 관리 강화 필요</span>
-                  )}
-                </li>
-              </ul>
-            </div>
-          </div>
+        <div className="rounded-2xl bg-amber-50/40 ring-1 ring-amber-100 shadow-sm p-5">
+          <h4 className="font-bold text-amber-700 mb-3 flex items-center gap-2">⚠️ 여신 관리 포인트</h4>
+          <ul className="list-disc list-inside space-y-1.5 text-sm text-slate-700 leading-relaxed">
+            <li>
+              <strong>상위 17개 대리상의 집중도</strong>가 {data.analysis.top17Ratio.toFixed(1)}%로 {data.analysis.top17Ratio > 70 ? '지속 위험 수준' : '적정 수준'}
+              {data.top17[0] && data.analysis.top1Ratio > 20 && (
+                <span> - <strong>{data.top17[0].name}</strong> 최대 거래처 ({data.analysis.top1Ratio.toFixed(1)}%)의 회수 차질 시 영향 큼</span>
+              )}
+            </li>
+            <li>
+              <strong>총 외상매출금:</strong> {formatNumber(data.total.외상매출금)} (전체 {data.dealers.length}개 대리상)
+            </li>
+            <li>
+              <strong>순여신:</strong> {formatNumber(data.total.순여신)}
+              {data.total.순여신 > 0 && (
+                <span className="text-red-600"> - 회수 진행 필요</span>
+              )}
+              {data.total.순여신 <= 0 && (
+                <span className="text-green-600"> - 양호한 상태</span>
+              )}
+            </li>
+            <li>
+              <strong>지속적인 신용평가</strong> 및 여신 회수 독촉 필요
+              {data.analysis.riskLevel === '높음' && (
+                <span className="text-red-600 font-semibold"> - 리스크 관리 강화 필요</span>
+              )}
+            </li>
+          </ul>
         </div>
       </div>
     </div>

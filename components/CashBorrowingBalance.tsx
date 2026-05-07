@@ -37,7 +37,7 @@ export default function CashBorrowingBalance({
     return `${sign}${formatNumber(Math.abs(v), false, false)}`;
   };
   const cellClass = (v: number, options?: { isDiff?: boolean; rowType?: 'cash' | 'borrowing' }) => {
-    const base = 'border border-gray-300 py-2 px-4 text-right';
+    const base = 'border border-slate-200 py-2 px-4 text-right';
     if (v >= 0) return base;
     if (options?.isDiff && options?.rowType === 'borrowing') return `${base} text-blue-600`;
     return `${base} text-red-600`;
@@ -116,38 +116,37 @@ export default function CashBorrowingBalance({
 
   return (
     <div className="mt-8">
-      <h3 className="text-base font-semibold text-gray-800 mb-2">현금잔액과 차입금잔액표</h3>
-      <div className="overflow-x-auto border border-gray-300 rounded-lg shadow-sm">
+      <div className="overflow-x-auto border border-slate-200 rounded-2xl shadow-sm">
         <table className="w-full border-collapse text-sm">
           <thead className="bg-navy text-white">
             {renderPlanCollapsed ? (
               <>
                 <tr>
-                  <th rowSpan={2} className="border border-gray-300 py-2.5 px-4 text-left sticky left-0 z-10 bg-navy min-w-[200px]">
-                    구분
+                  <th rowSpan={2} className="border border-slate-200 py-2.5 px-4 text-left sticky left-0 z-10 bg-navy min-w-[200px]">
+                    현금잔액과 차입금잔액표
                   </th>
-                  <th rowSpan={2} className="border border-gray-300 py-2.5 px-4 text-center min-w-[120px]">전년기말</th>
-                  <th colSpan={2} className="border border-gray-300 py-2.5 px-4 text-center min-w-[120px] bg-gray-600">전월계획</th>
-                  <th colSpan={4} className="border border-gray-300 py-2.5 px-4 text-center min-w-[120px]">2026년(예상)</th>
+                  <th rowSpan={2} className="border border-slate-200 py-2.5 px-4 text-center min-w-[120px]">전년기말</th>
+                  <th colSpan={2} className="border border-slate-200 py-2.5 px-4 text-center min-w-[120px] bg-slate-500">전월계획</th>
+                  <th colSpan={4} className="border border-slate-200 py-2.5 px-4 text-center min-w-[120px] bg-navy-light">2026년(예상)</th>
                 </tr>
                 <tr>
-                  <th className="border border-gray-300 py-2 px-4 text-center min-w-[110px] bg-gray-600">2026년계획(N-1)</th>
-                  <th className="border border-gray-300 py-2 px-4 text-center min-w-[110px] bg-gray-600">계획-전년</th>
-                  <th className="border border-gray-300 py-2 px-4 text-center min-w-[110px]">기말잔액</th>
-                  <th className="border border-gray-300 py-2 px-4 text-center min-w-[100px]">예상-전년</th>
-                  <th className="border border-gray-300 py-2 px-4 text-center min-w-[110px]">계획 대비</th>
-                  <th className="border border-gray-300 py-2 px-4 text-center min-w-[90px]">계획 대비%</th>
+                  <th className="border border-slate-200 py-2 px-4 text-center min-w-[110px] bg-slate-500">2026년계획(N-1)</th>
+                  <th className="border border-slate-200 py-2 px-4 text-center min-w-[110px] bg-slate-500">계획-전년</th>
+                  <th className="border border-slate-200 py-2 px-4 text-center min-w-[110px] bg-navy-light">기말잔액</th>
+                  <th className="border border-slate-200 py-2 px-4 text-center min-w-[100px] bg-navy-light">예상-전년</th>
+                  <th className="border border-slate-200 py-2 px-4 text-center min-w-[110px] bg-navy-light">계획 대비</th>
+                  <th className="border border-slate-200 py-2 px-4 text-center min-w-[90px] bg-navy-light">계획 대비%</th>
                 </tr>
               </>
             ) : (
               <tr>
-                <th className="border border-gray-300 py-2.5 px-4 text-left sticky left-0 z-10 bg-navy min-w-[200px]">
-                  구분
+                <th className="border border-slate-200 py-2.5 px-4 text-left sticky left-0 z-10 bg-navy min-w-[200px]">
+                  현금잔액과 차입금잔액표
                 </th>
                 {displayCols.map((col, i) => (
                   <th
                     key={i}
-                    className={`border border-gray-300 py-2.5 px-4 text-center ${
+                    className={`border border-slate-200 py-2.5 px-4 text-center ${
                       monthsCollapsed && is2026 && i < 2 ? 'min-w-[120px]' : 'min-w-[100px]'
                     }`}
                   >
@@ -159,7 +158,7 @@ export default function CashBorrowingBalance({
           </thead>
           <tbody className="bg-gray-50">
             <tr className="bg-gray-50">
-              <td className="border border-gray-300 py-2 px-4 font-medium sticky left-0 z-10 bg-gray-100 text-gray-800">
+              <td className="border border-slate-200 py-2 px-4 font-medium sticky left-0 z-10 bg-gray-100 text-gray-800">
                 현금잔액
               </td>
               {renderPlanCollapsed
@@ -174,7 +173,7 @@ export default function CashBorrowingBalance({
                   })}
             </tr>
             <tr className="bg-gray-50">
-              <td className="border border-gray-300 py-2 px-4 font-medium sticky left-0 z-10 bg-gray-100 text-gray-800">
+              <td className="border border-slate-200 py-2 px-4 font-medium sticky left-0 z-10 bg-gray-100 text-gray-800">
                 차입금잔액
               </td>
               {renderPlanCollapsed

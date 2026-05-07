@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useMemo, useEffect } from 'react';
+import { ChevronDown, ChevronUp, ChevronLeft, ChevronRight, Eye, EyeOff } from 'lucide-react';
 import { TableRow } from '@/lib/types';
 import { formatNumber, formatPercent } from '@/lib/utils';
 
@@ -24,6 +25,9 @@ interface FinancialTableProps {
   hideYtd?: boolean; // YTD 숨기기
   onHideYtdToggle?: () => void; // YTD 숨기기 토글 핸들러
   planMonth?: number | null; // BS 2026 계획 기준월
+  allRowsCollapsed?: boolean; // 모든 행 접기 상태 (외부 제어)
+  onAllRowsToggle?: () => void; // 모든 행 접기 토글 핸들러
+  hideInternalControls?: boolean; // 내부 컨트롤 버튼(펼치기/월별/YTD) 숨김 — 부모가 외부에서 렌더할 때
 }
 
 export default function FinancialTable({ 
@@ -46,10 +50,14 @@ export default function FinancialTable({
   hideYtd = false,
   onHideYtdToggle,
   planMonth,
+  allRowsCollapsed: externalAllRowsCollapsed,
+  onAllRowsToggle,
+  hideInternalControls = false,
 }: FinancialTableProps) {
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
   const [internalMonthsCollapsed, setInternalMonthsCollapsed] = useState<boolean>(true);
-  const [allRowsCollapsed, setAllRowsCollapsed] = useState<boolean>(true);
+  const [internalAllRowsCollapsed, setInternalAllRowsCollapsed] = useState<boolean>(true);
+  const allRowsCollapsed = externalAllRowsCollapsed !== undefined ? externalAllRowsCollapsed : internalAllRowsCollapsed;
   
   // 브랜드별 컬럼 접기/펼치기 상태 (3가지 독립적)
   const [brandMonthCollapsed, setBrandMonthCollapsed] = useState<boolean>(true); // 당월
@@ -81,17 +89,30 @@ export default function FinancialTable({
 
   // 모든 행 접기/펼치기
   const toggleAllRows = () => {
+    if (onAllRowsToggle) {
+      onAllRowsToggle();
+      return;
+    }
     if (allRowsCollapsed) {
-      // 모두 펼치기
       setCollapsed(new Set());
-      setAllRowsCollapsed(false);
+      setInternalAllRowsCollapsed(false);
     } else {
-      // 모두 접기 (그룹인 행만)
       const allGroups = data.filter(row => row.isGroup).map(row => row.account);
       setCollapsed(new Set(allGroups));
-      setAllRowsCollapsed(true);
+      setInternalAllRowsCollapsed(true);
     }
   };
+
+  // 외부에서 allRowsCollapsed가 변경되면 collapsed Set도 동기화
+  useEffect(() => {
+    if (externalAllRowsCollapsed === undefined) return;
+    if (externalAllRowsCollapsed) {
+      const allGroups = data.filter(row => row.isGroup).map(row => row.account);
+      setCollapsed(new Set(allGroups));
+    } else {
+      setCollapsed(new Set());
+    }
+  }, [externalAllRowsCollapsed, data]);
 
   // 표시할 행 필터링 (접힌 그룹의 자식은 숨김)
   const visibleRows = useMemo(() => {
@@ -137,11 +158,13 @@ export default function FinancialTable({
   };
 
   // 배경색 클래스
-  const getHighlightClass = (highlight?: 'sky' | 'yellow' | 'gray' | 'mint' | 'none') => {
+  const getHighlightClass = (highlight?: 'sky' | 'yellow' | 'gray' | 'mint' | 'orange' | 'pink' | 'none') => {
     if (highlight === 'sky') return 'bg-highlight-sky';
     if (highlight === 'yellow') return 'bg-highlight-yellow';
     if (highlight === 'gray') return 'bg-highlight-gray';
-    if (highlight === 'mint') return 'bg-emerald-100';
+    if (highlight === 'mint') return 'bg-highlight-mint';
+    if (highlight === 'orange') return 'bg-highlight-orange';
+    if (highlight === 'pink') return 'bg-highlight-pink';
     return '';
   };
 
@@ -344,43 +367,51 @@ export default function FinancialTable({
 
   return (
     <div>
-      {/* 컨트롤 버튼들 */}
-      <div className="mb-4 flex items-center gap-2">
-        {/* 모든 행 접기/펼치기 버튼 */}
-        <button
-          onClick={toggleAllRows}
-          className="px-4 py-2 text-sm font-medium rounded bg-gray-600 text-white hover:bg-gray-700 transition-colors"
-        >
-          {allRowsCollapsed ? '펼치기 ▼' : '접기 ▲'}
-        </button>
-        
-        {/* 월 컬럼 토글 버튼 (PL 2025년만) */}
-        {showComparisons && (
-          <>
-            <button
-              onClick={toggleMonths}
-              className="px-4 py-2 text-sm font-medium rounded-lg bg-gray-200 text-gray-700 hover:bg-gray-300 transition-colors shadow-sm"
-            >
-              {monthsCollapsed ? '월별 데이터 펼치기 ▶' : '월별 데이터 접기 ◀'}
-            </button>
-            <span className="text-sm text-gray-600">
-              (비교 컬럼은 항상 표시됩니다)
-            </span>
-          </>
-        )}
-        
-        {/* 전체 보기 / YTD 숨기기 버튼 (PL 2025년만) */}
-        {onHideYtdToggle && (
+      {/* 컨트롤 버튼들 (부모가 외부에서 렌더하면 숨김) */}
+      {!hideInternalControls && (
+        <div className="mb-4 flex items-center gap-1.5">
           <button
-            onClick={onHideYtdToggle}
-            className="px-4 py-2 text-sm font-medium rounded-lg bg-gray-200 text-gray-700 hover:bg-gray-300 transition-colors shadow-sm"
+            onClick={toggleAllRows}
+            className="inline-flex items-center gap-1.5 rounded-md border border-slate-200 bg-white px-2.5 py-1 text-xs font-medium text-slate-600 transition-colors hover:border-slate-300 hover:bg-slate-50"
           >
-            {hideYtd ? '전체 보기 (YTD 숨긴 상태)' : 'YTD 숨기기 (현재 전체보기)'}
+            {allRowsCollapsed ? '펼치기' : '접기'}
+            {allRowsCollapsed
+              ? <ChevronDown className="h-3.5 w-3.5 text-slate-400" />
+              : <ChevronUp className="h-3.5 w-3.5 text-slate-400" />}
           </button>
-        )}
-      </div>
 
-      <div className="overflow-hidden rounded-lg border border-gray-300 shadow-sm">
+          {showComparisons && (
+            <>
+              <button
+                onClick={toggleMonths}
+                className="inline-flex items-center gap-1.5 rounded-md border border-slate-200 bg-white px-2.5 py-1 text-xs font-medium text-slate-600 transition-colors hover:border-slate-300 hover:bg-slate-50"
+              >
+                {monthsCollapsed ? '월별 데이터 펼치기' : '월별 데이터 접기'}
+                {monthsCollapsed
+                  ? <ChevronRight className="h-3.5 w-3.5 text-slate-400" />
+                  : <ChevronLeft className="h-3.5 w-3.5 text-slate-400" />}
+              </button>
+              <span className="text-xs text-slate-500">
+                (비교 컬럼은 항상 표시됩니다)
+              </span>
+            </>
+          )}
+
+          {onHideYtdToggle && (
+            <button
+              onClick={onHideYtdToggle}
+              className="inline-flex items-center gap-1.5 rounded-md border border-slate-200 bg-white px-2.5 py-1 text-xs font-medium text-slate-600 transition-colors hover:border-slate-300 hover:bg-slate-50"
+            >
+              {hideYtd ? 'YTD 보기' : 'YTD 숨기기'}
+              {hideYtd
+                ? <Eye className="h-3.5 w-3.5 text-slate-400" />
+                : <EyeOff className="h-3.5 w-3.5 text-slate-400" />}
+            </button>
+          )}
+        </div>
+      )}
+
+      <div className="overflow-hidden rounded-2xl border border-gray-200 shadow-sm">
         <div 
           className={`relative overflow-auto ${compactLayout ? 'flex justify-center' : ''}`} 
           style={{ maxHeight: 'calc(100vh - 250px)' }}
@@ -399,45 +430,45 @@ export default function FinancialTable({
                 <tr>
                   <th
                     rowSpan={2}
-                    className="border border-gray-300 py-3 px-4 text-center font-semibold sticky top-0 left-0 z-40 bg-navy min-w-[200px]"
+                    className="border border-gray-200 py-3 px-4 text-center font-semibold sticky top-0 left-0 z-40 bg-navy min-w-[200px]"
                   >
                     계정과목
                   </th>
                   <th
                     rowSpan={2}
-                    className="border border-gray-300 py-3 px-4 text-center font-semibold bg-navy-light min-w-[100px]"
+                    className="border border-gray-200 py-3 px-4 text-center font-semibold bg-navy min-w-[100px]"
                   >
                     2025년(기말)
                   </th>
                   <th
                     colSpan={3}
-                    className="border border-gray-300 py-3 px-4 text-center font-semibold bg-navy min-w-[100px]"
+                    className="border border-gray-200 py-3 px-4 text-center font-semibold bg-navy min-w-[100px]"
                   >
                     당월({planMonth ?? 2}월)
                   </th>
                   <th
                     colSpan={4}
-                    className="border border-gray-300 py-3 px-4 text-center font-semibold bg-navy-light min-w-[100px]"
+                    className="border border-gray-200 py-3 px-4 text-center font-semibold bg-navy min-w-[100px]"
                   >
                     2026년기말
                   </th>
                   {showRemarks && (
                     <th
                       rowSpan={2}
-                      className="border border-gray-300 py-3 px-4 text-center font-semibold bg-navy min-w-[200px]"
+                      className="border border-gray-200 py-3 px-4 text-center font-semibold bg-navy min-w-[200px]"
                     >
                       비고
                     </th>
                   )}
                 </tr>
                 <tr>
-                  <th className="border border-gray-300 py-2 px-4 text-center font-semibold bg-navy min-w-[100px]">계획</th>
-                  <th className="border border-gray-300 py-2 px-4 text-center font-semibold bg-navy min-w-[100px]">실적</th>
-                  <th className="border border-gray-300 py-2 px-4 text-center font-semibold bg-navy min-w-[100px]">계획비</th>
-                  <th className="border border-gray-300 py-2 px-4 text-center font-semibold bg-navy-light min-w-[100px]">계획</th>
-                  <th className="border border-gray-300 py-2 px-4 text-center font-semibold bg-navy-light min-w-[100px]">실적(예상)</th>
-                  <th className="border border-gray-300 py-2 px-4 text-center font-semibold bg-navy-light min-w-[100px]">계획비</th>
-                  <th className="border border-gray-300 py-2 px-4 text-center font-semibold bg-navy-light min-w-[100px]">전년비</th>
+                  <th className="border border-gray-200 py-2 px-4 text-center font-semibold bg-navy min-w-[100px]">계획</th>
+                  <th className="border border-gray-200 py-2 px-4 text-center font-semibold bg-navy min-w-[100px]">실적</th>
+                  <th className="border border-gray-200 py-2 px-4 text-center font-semibold bg-navy min-w-[100px]">계획비</th>
+                  <th className="border border-gray-200 py-2 px-4 text-center font-semibold bg-navy min-w-[100px]">계획</th>
+                  <th className="border border-gray-200 py-2 px-4 text-center font-semibold bg-navy min-w-[100px]">실적(예상)</th>
+                  <th className="border border-gray-200 py-2 px-4 text-center font-semibold bg-navy min-w-[100px]">계획비</th>
+                  <th className="border border-gray-200 py-2 px-4 text-center font-semibold bg-navy min-w-[100px]">전년비</th>
                 </tr>
               </>
             ) : (
@@ -487,11 +518,11 @@ export default function FinancialTable({
                     <th
                       key={index}
                       className={`
-                        border border-gray-300 py-3 text-center font-semibold
+                        border border-gray-200 py-3 text-center font-semibold
                         text-white
                         ${isAccountCol ? 'sticky top-0 left-0 z-40 bg-navy min-w-[200px] px-4' : 'min-w-[100px] px-4'}
                         ${isNonBaseMonthCol ? 'bg-gray-600' : ''}
-                        ${!isNonBaseMonthCol && isComparisonCol ? 'bg-navy-light' : ''}
+                        ${!isNonBaseMonthCol && isComparisonCol ? 'bg-navy' : ''}
                         ${!isNonBaseMonthCol && !isComparisonCol && !isAccountCol && !isBrandCol ? 'bg-navy' : ''}
                         ${isBrandCol ? 'bg-gray-700' : ''}
                         ${(isMonthGroupHeader || isYtdGroupHeader || isAnnualGroupHeader) ? 'cursor-pointer hover:bg-gray-700' : ''}
@@ -506,11 +537,11 @@ export default function FinancialTable({
                       <div className="flex items-center justify-center gap-1">
                       {col}
                         {(isMonthGroupHeader || isYtdGroupHeader || isAnnualGroupHeader) && (
-                          <span className="text-xs">
-                            {((isMonthGroupHeader && brandMonthCollapsed) || 
-                              (isYtdGroupHeader && brandYtdCollapsed) || 
-                              (isAnnualGroupHeader && brandAnnualCollapsed)) ? '▶' : '▼'}
-                          </span>
+                          ((isMonthGroupHeader && brandMonthCollapsed) ||
+                            (isYtdGroupHeader && brandYtdCollapsed) ||
+                            (isAnnualGroupHeader && brandAnnualCollapsed))
+                            ? <ChevronRight className="h-3.5 w-3.5" strokeWidth={2.5} />
+                            : <ChevronDown className="h-3.5 w-3.5" strokeWidth={2.5} />
                         )}
                       </div>
                     </th>
@@ -519,7 +550,7 @@ export default function FinancialTable({
                 
                 {/* 비고 열 헤더 */}
                 {showRemarks && (
-                  <th className="border border-gray-300 py-3 px-4 text-center font-semibold text-white bg-navy min-w-[200px]">
+                  <th className="border border-gray-200 py-3 px-4 text-center font-semibold text-white bg-navy min-w-[200px]">
                     비고
                   </th>
                 )}
@@ -531,7 +562,11 @@ export default function FinancialTable({
               // Balance Check 행 스타일링 (절대값 10 미만이면 정합)
               const isBalanceCheck = row.account === 'Balance Check';
               const isBalanceOk = isBalanceCheck && row.values.every(v => v === null || Math.abs(v) < 10);
-              
+              // 매출총이익 / 영업이익(관리식) 아래 굵은 회색 구분선
+              const hasThickDivider = row.account === '매출총이익' || row.account === '영업이익(관리식)';
+              // 재무&관리차이(-) 행: 오렌지 텍스트
+              const isOrangeText = row.isHighlight === 'orange';
+
               return (
               <tr
                 key={rowIndex}
@@ -540,13 +575,15 @@ export default function FinancialTable({
                   ${isBalanceCheck && !isBalanceOk ? 'bg-red-100' : ''}
                   ${!isBalanceCheck ? getHighlightClass(row.isHighlight) : ''}
                   ${row.isBold ? 'font-semibold' : ''}
+                  ${hasThickDivider ? '[&>td]:!border-b-[3px] [&>td]:!border-b-slate-400' : ''}
+                  ${isOrangeText ? '[&>td]:!text-orange-700' : ''}
                   hover:bg-gray-50
                 `}
               >
                 {/* 계정과목 열 (고정) */}
                 <td
                   className={`
-                    border border-gray-300 px-4 py-2 sticky left-0 z-20
+                    border border-gray-200 px-4 py-2 sticky left-0 z-20
                     ${isBalanceCheck && isBalanceOk ? 'bg-green-100' : ''}
                     ${isBalanceCheck && !isBalanceOk ? 'bg-red-100' : ''}
                     ${!isBalanceCheck && (getHighlightClass(row.isHighlight))}
@@ -567,12 +604,14 @@ export default function FinancialTable({
                       {isBalanceCheck ? (
                         isBalanceOk ? 'Balance Check ✓ 정합' : 'Balance Check (차대변 불일치)'
                       ) : (
-                        row.account
+                        row.account === '실판매출' ? '실판매출(V-)' : row.account
                       )}
                     </span>
                     {row.isGroup && (
-                      <span className="text-gray-500 flex-shrink-0">
-                        {collapsed.has(row.account) ? '▶' : '▼'}
+                      <span className="inline-flex items-center text-slate-400 flex-shrink-0">
+                        {collapsed.has(row.account)
+                          ? <ChevronRight className="h-3.5 w-3.5" strokeWidth={2.5} />
+                          : <ChevronDown className="h-3.5 w-3.5" strokeWidth={2.5} />}
                       </span>
                     )}
                   </div>
@@ -583,7 +622,7 @@ export default function FinancialTable({
                   <>
                     <td
                       className={`
-                        border border-gray-300 px-4 py-2 text-right
+                        border border-gray-200 px-4 py-2 text-right
                         ${getHighlightClass(row.isHighlight)}
                         ${row.isBold ? 'font-semibold' : ''}
                         ${isNegative(row.year2024Value ?? null) ? 'text-red-600' : ''}
@@ -598,7 +637,7 @@ export default function FinancialTable({
 
                 {/* 2026년 재무상태표: 월별 데이터 전에 25년기말 컬럼 먼저 렌더링 */}
                 {isBalanceSheet && currentYear === 2026 && !monthsCollapsed && row.comparisons && (
-                  <td className={`border border-gray-300 px-4 py-2 text-right ${isBalanceCheck ? (row.comparisons.prevYearAnnual === null || Math.abs(row.comparisons.prevYearAnnual) < 10 ? 'bg-green-100' : 'bg-red-100') : getHighlightClass(row.isHighlight)} ${row.isBold ? 'font-semibold' : ''} ${isNegative(row.comparisons.prevYearAnnual) ? 'text-red-600' : ''}`}>
+                  <td className={`border border-gray-200 px-4 py-2 text-right ${isBalanceCheck ? (row.comparisons.prevYearAnnual === null || Math.abs(row.comparisons.prevYearAnnual) < 10 ? 'bg-green-100' : 'bg-red-100') : getHighlightClass(row.isHighlight)} ${row.isBold ? 'font-semibold' : ''} ${isNegative(row.comparisons.prevYearAnnual) ? 'text-red-600' : ''}`}>
                     {formatValue(row.comparisons.prevYearAnnual, row.format, false, true)}
                   </td>
                 )}
@@ -618,7 +657,7 @@ export default function FinancialTable({
                     <td
                       key={`month-${colIndex}`}
                       className={`
-                        border border-gray-300 px-4 py-2 text-right
+                        border border-gray-200 px-4 py-2 text-right
                         ${isBalanceCheck && isValueOk ? 'bg-green-100' : ''}
                         ${isBalanceCheck && !isValueOk ? 'bg-red-100' : ''}
                         ${!isBalanceCheck ? getHighlightClass(row.isHighlight) : ''}
@@ -636,7 +675,7 @@ export default function FinancialTable({
                   <>
                     <td
                       className={`
-                        border border-gray-300 px-4 py-2 text-right
+                        border border-gray-200 px-4 py-2 text-right
                         ${getHighlightClass(row.isHighlight)}
                         ${row.isBold ? 'font-semibold' : ''}
                         ${isNegative(row.values[12]) ? 'text-red-600' : ''}
@@ -647,7 +686,7 @@ export default function FinancialTable({
                     {/* CF: YoY 컬럼 (25년 - 24년) */}
                     <td
                       className={`
-                        border border-gray-300 px-4 py-2 text-right
+                        border border-gray-200 px-4 py-2 text-right
                         ${getHighlightClass(row.isHighlight)}
                         ${row.isBold ? 'font-semibold' : ''}
                         ${isNegative(row.values[13]) ? 'text-red-600' : ''}
@@ -695,9 +734,9 @@ export default function FinancialTable({
                     // 2026년 재무상태표
                     if (isBalanceSheet && currentYear === 2026 && row.comparisons) {
                       const cellClass = (val: number | null) =>
-                        `border border-gray-300 px-4 py-2 text-right ${isBalanceCheck ? (val === null || Math.abs(val) < 10 ? 'bg-green-100' : 'bg-red-100') : getHighlightClass(row.isHighlight)} ${row.isBold ? 'font-semibold' : ''} ${isNegative(val) ? 'text-red-600' : ''}`;
+                        `border border-gray-200 px-4 py-2 text-right ${isBalanceCheck ? (val === null || Math.abs(val) < 10 ? 'bg-green-100' : 'bg-red-100') : getHighlightClass(row.isHighlight)} ${row.isBold ? 'font-semibold' : ''} ${isNegative(val) ? 'text-red-600' : ''}`;
                       const compCellClass = (val: number | null) =>
-                        `border border-gray-300 px-4 py-2 text-right bg-navy-light/10 ${isBalanceCheck ? (val === null || Math.abs(val) < 10 ? 'bg-green-100' : 'bg-red-100') : getHighlightClass(row.isHighlight)} ${row.isBold ? 'font-semibold' : ''} ${isNegative(val) ? 'text-red-600' : ''}`;
+                        `border border-gray-200 px-4 py-2 text-right bg-navy/10 ${isBalanceCheck ? (val === null || Math.abs(val) < 10 ? 'bg-green-100' : 'bg-red-100') : getHighlightClass(row.isHighlight)} ${row.isBold ? 'font-semibold' : ''} ${isNegative(val) ? 'text-red-600' : ''}`;
                       if (monthsCollapsed) {
                         // 접힌 2행 헤더 뷰: 2025년기말 | 당월계획 | 당월실적 | 당월YoY | 기말계획 | 기말실적 | 계획비 | 전년비
                         cells.push(
@@ -775,7 +814,7 @@ export default function FinancialTable({
                       if (col === comparisonColumns[0]) {
                         // 전년(12월) - 브랜드별 컬럼 없음
                         cells.push(
-                          <td key={`prev-month-${i}`} className={`border border-gray-300 px-4 py-2 text-right ${isBalanceCheck ? (row.comparisons.prevYearMonth === null || Math.abs(row.comparisons.prevYearMonth) < 10 ? 'bg-green-100' : 'bg-red-100') : getHighlightClass(row.isHighlight)} ${row.isBold ? 'font-semibold' : ''} ${isNegative(row.comparisons.prevYearMonth) ? 'text-red-600' : ''}`}>
+                          <td key={`prev-month-${i}`} className={`border border-gray-200 px-4 py-2 text-right ${isBalanceCheck ? (row.comparisons.prevYearMonth === null || Math.abs(row.comparisons.prevYearMonth) < 10 ? 'bg-green-100' : 'bg-red-100') : getHighlightClass(row.isHighlight)} ${row.isBold ? 'font-semibold' : ''} ${isNegative(row.comparisons.prevYearMonth) ? 'text-red-600' : ''}`}>
                           {formatValue(row.comparisons.prevYearMonth, row.format, false, true)}
                         </td>
                         );
@@ -784,7 +823,7 @@ export default function FinancialTable({
                         if (isBalanceSheet) {
                           // 재무상태표는 기존대로
                           cells.push(
-                            <td key={`curr-month-${i}`} className={`border border-gray-300 px-4 py-2 text-right ${isBalanceCheck ? (row.comparisons.currYearMonth === null || Math.abs(row.comparisons.currYearMonth) < 10 ? 'bg-green-100' : 'bg-red-100') : getHighlightClass(row.isHighlight)} ${row.isBold ? 'font-semibold' : ''} ${isNegative(row.comparisons.currYearMonth) ? 'text-red-600' : ''}`}>
+                            <td key={`curr-month-${i}`} className={`border border-gray-200 px-4 py-2 text-right ${isBalanceCheck ? (row.comparisons.currYearMonth === null || Math.abs(row.comparisons.currYearMonth) < 10 ? 'bg-green-100' : 'bg-red-100') : getHighlightClass(row.isHighlight)} ${row.isBold ? 'font-semibold' : ''} ${isNegative(row.comparisons.currYearMonth) ? 'text-red-600' : ''}`}>
                               {formatValue(row.comparisons.currYearMonth, row.format, false, true)}
                             </td>
                           );
@@ -801,7 +840,7 @@ export default function FinancialTable({
                             && row.comparisons.currYearMonth > 0 
                             && row.comparisons.prevYearMonth < 0;
                           cells.push(
-                            <td key={`curr-month-${i}`} className={`border border-gray-300 px-4 py-2 text-right ${getHighlightClass(row.isHighlight)} ${row.isBold ? 'font-semibold' : ''}`}>
+                            <td key={`curr-month-${i}`} className={`border border-gray-200 px-4 py-2 text-right ${getHighlightClass(row.isHighlight)} ${row.isBold ? 'font-semibold' : ''}`}>
                               <div className="flex flex-col items-end">
                                 {/* 첫 줄: 금액 (현재 크기) */}
                                 <div className={isNegative(row.comparisons.currYearMonth) ? 'text-red-600' : ''}>
@@ -833,14 +872,14 @@ export default function FinancialTable({
                       } else if (col === 'YoY(기준월)' && isBalanceSheet) {
                         // YoY(기준월) - 재무상태표만 (손익계산서는 당년 컬럼에 통합됨)
                         cells.push(
-                          <td key={`month-yoy-${i}`} className={`border border-gray-300 px-4 py-2 text-right ${isBalanceCheck ? (row.comparisons.monthYoY === null || Math.abs(row.comparisons.monthYoY) < 10 ? 'bg-green-100' : 'bg-red-100') : getHighlightClass(row.isHighlight)} ${row.isBold ? 'font-semibold' : ''} ${isNegative(row.comparisons.monthYoY) ? 'text-red-600' : ''}`}>
+                          <td key={`month-yoy-${i}`} className={`border border-gray-200 px-4 py-2 text-right ${isBalanceCheck ? (row.comparisons.monthYoY === null || Math.abs(row.comparisons.monthYoY) < 10 ? 'bg-green-100' : 'bg-red-100') : getHighlightClass(row.isHighlight)} ${row.isBold ? 'font-semibold' : ''} ${isNegative(row.comparisons.monthYoY) ? 'text-red-600' : ''}`}>
                             {formatValue(row.comparisons.monthYoY, row.format, true, false)}
                           </td>
                         );
                       } else if (col === 'YoY(연간)' && isBalanceSheet) {
                         // YoY(연간) - 재무상태표만 (손익계산서는 당년 컬럼에 통합됨)
                         cells.push(
-                          <td key={`annual-yoy-${i}`} className={`border border-gray-300 px-4 py-2 text-right ${isBalanceCheck ? (row.comparisons.annualYoY === null || Math.abs(row.comparisons.annualYoY) < 10 ? 'bg-green-100' : 'bg-red-100') : getHighlightClass(row.isHighlight)} ${row.isBold ? 'font-semibold' : ''} ${isNegative(row.comparisons.annualYoY) ? 'text-red-600' : ''}`}>
+                          <td key={`annual-yoy-${i}`} className={`border border-gray-200 px-4 py-2 text-right ${isBalanceCheck ? (row.comparisons.annualYoY === null || Math.abs(row.comparisons.annualYoY) < 10 ? 'bg-green-100' : 'bg-red-100') : getHighlightClass(row.isHighlight)} ${row.isBold ? 'font-semibold' : ''} ${isNegative(row.comparisons.annualYoY) ? 'text-red-600' : ''}`}>
                             {formatValue(row.comparisons.annualYoY, row.format, true, false)}
                           </td>
                         );
@@ -848,7 +887,7 @@ export default function FinancialTable({
                         // 손익계산서: 전년YTD - 브랜드별 컬럼 없음
                         if (!hideYtd) {
                           cells.push(
-                            <td key={`prev-ytd-${i}`} className={`border border-gray-300 px-4 py-2 text-right ${getHighlightClass(row.isHighlight)} ${row.isBold ? 'font-semibold' : ''} ${isNegative(row.comparisons.prevYearYTD) ? 'text-red-600' : ''}`}>
+                            <td key={`prev-ytd-${i}`} className={`border border-gray-200 px-4 py-2 text-right ${getHighlightClass(row.isHighlight)} ${row.isBold ? 'font-semibold' : ''} ${isNegative(row.comparisons.prevYearYTD) ? 'text-red-600' : ''}`}>
                               {formatValue(row.comparisons.prevYearYTD, row.format, false, true)}
                             </td>
                           );
@@ -867,7 +906,7 @@ export default function FinancialTable({
                             && row.comparisons.currYearYTD > 0 
                             && row.comparisons.prevYearYTD < 0;
                           cells.push(
-                            <td key={`curr-ytd-${i}`} className={`border border-gray-300 px-4 py-2 text-right ${getHighlightClass(row.isHighlight)} ${row.isBold ? 'font-semibold' : ''}`}>
+                            <td key={`curr-ytd-${i}`} className={`border border-gray-200 px-4 py-2 text-right ${getHighlightClass(row.isHighlight)} ${row.isBold ? 'font-semibold' : ''}`}>
                               <div className="flex flex-col items-end">
                                 {/* 첫 줄: 금액 (현재 크기) */}
                                 <div className={isNegative(row.comparisons.currYearYTD) ? 'text-red-600' : ''}>
@@ -899,7 +938,7 @@ export default function FinancialTable({
                       } else if (col === comparisonColumns[isBalanceSheet ? 3 : 4]) {
                         // 재무상태표: 24년기말 ([3]), 손익계산서: 24년연간 ([4])
                         cells.push(
-                          <td key={`prev-annual-${i}`} className={`border border-gray-300 px-4 py-2 text-right ${isBalanceCheck ? (row.comparisons.prevYearAnnual === null || Math.abs(row.comparisons.prevYearAnnual) < 10 ? 'bg-green-100' : 'bg-red-100') : getHighlightClass(row.isHighlight)} ${row.isBold ? 'font-semibold' : ''} ${isNegative(row.comparisons.prevYearAnnual) ? 'text-red-600' : ''}`}>
+                          <td key={`prev-annual-${i}`} className={`border border-gray-200 px-4 py-2 text-right ${isBalanceCheck ? (row.comparisons.prevYearAnnual === null || Math.abs(row.comparisons.prevYearAnnual) < 10 ? 'bg-green-100' : 'bg-red-100') : getHighlightClass(row.isHighlight)} ${row.isBold ? 'font-semibold' : ''} ${isNegative(row.comparisons.prevYearAnnual) ? 'text-red-600' : ''}`}>
                           {formatValue(row.comparisons.prevYearAnnual, row.format, false, true)}
                         </td>
                         );
@@ -908,7 +947,7 @@ export default function FinancialTable({
                         if (isBalanceSheet) {
                           // 재무상태표는 기존대로
                           cells.push(
-                            <td key={`curr-annual-${i}`} className={`border border-gray-300 px-4 py-2 text-right ${isBalanceCheck ? (row.comparisons.currYearAnnual === null || Math.abs(row.comparisons.currYearAnnual) < 10 ? 'bg-green-100' : 'bg-red-100') : getHighlightClass(row.isHighlight)} ${row.isBold ? 'font-semibold' : ''} ${isNegative(row.comparisons.currYearAnnual) ? 'text-red-600' : ''}`}>
+                            <td key={`curr-annual-${i}`} className={`border border-gray-200 px-4 py-2 text-right ${isBalanceCheck ? (row.comparisons.currYearAnnual === null || Math.abs(row.comparisons.currYearAnnual) < 10 ? 'bg-green-100' : 'bg-red-100') : getHighlightClass(row.isHighlight)} ${row.isBold ? 'font-semibold' : ''} ${isNegative(row.comparisons.currYearAnnual) ? 'text-red-600' : ''}`}>
                               {formatValue(row.comparisons.currYearAnnual, row.format, false, true)}
                             </td>
                           );
@@ -925,7 +964,7 @@ export default function FinancialTable({
                             && row.comparisons.currYearAnnual > 0 
                             && row.comparisons.prevYearAnnual < 0;
                           cells.push(
-                            <td key={`curr-annual-${i}`} className={`border border-gray-300 px-4 py-2 text-right ${getHighlightClass(row.isHighlight)} ${row.isBold ? 'font-semibold' : ''}`}>
+                            <td key={`curr-annual-${i}`} className={`border border-gray-200 px-4 py-2 text-right ${getHighlightClass(row.isHighlight)} ${row.isBold ? 'font-semibold' : ''}`}>
                               <div className="flex flex-col items-end">
                                 {/* 첫 줄: 금액 (현재 크기) */}
                                 <div className={isNegative(row.comparisons.currYearAnnual) ? 'text-red-600' : ''}>
@@ -986,10 +1025,10 @@ export default function FinancialTable({
                         
                         // 마지막 브랜드(SUPRA)가 아닌 경우 오른쪽에 구분선 추가
                         const isLastBrand = brand.toUpperCase() === 'SUPRA';
-                        const borderClass = isLastBrand ? 'border-r border-gray-300' : 'border-r-2 border-gray-300';
+                        const borderClass = isLastBrand ? 'border-r border-gray-200' : 'border-r-2 border-gray-200';
                         
                         cells.push(
-                          <td key={`brand-${brand}-${i}`} className={`border border-gray-300 ${borderClass} px-4 py-2 text-right bg-white ${getHighlightClass(row.isHighlight)} ${row.isBold ? 'font-semibold' : ''}`}>
+                          <td key={`brand-${brand}-${i}`} className={`border border-gray-200 ${borderClass} px-4 py-2 text-right bg-white ${getHighlightClass(row.isHighlight)} ${row.isBold ? 'font-semibold' : ''}`}>
                             <div className="flex flex-col items-end">
                               {/* 첫 줄: 금액 (현재 크기) */}
                               <div className={isNegative(currValue) ? 'text-red-600' : ''}>
@@ -1023,7 +1062,7 @@ export default function FinancialTable({
 
                 {/* 비고 열 */}
                 {showRemarks && (
-                  <td className={`border border-gray-300 px-3 py-2 ${getHighlightClass(row.isHighlight)}`}>
+                  <td className={`border border-gray-200 px-3 py-2 ${getHighlightClass(row.isHighlight)}`}>
                     <input
                       type="text"
                       value={remarks?.get(row.account) || autoRemarks?.[row.account] || ''}

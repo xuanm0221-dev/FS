@@ -7,7 +7,31 @@
       "Bash(curl -s \"http://localhost:3000/api/inventory/retail-sales?year=2026&brand=MLB&growthRate=5&growthRateHq=15\")",
       "Bash(python -c \" import sys,json d=json.load\\(sys.stdin\\) print\\('=== dealer rows ==='\\) for r in \\(d.get\\('dealer'\\) or {}\\).get\\('rows', []\\): if r.get\\('isTotal'\\): print\\('매출합계:', r['monthly']\\) print\\('=== hq rows ==='\\) for r in \\(d.get\\('hq'\\) or {}\\).get\\('rows', []\\): if r.get\\('isTotal'\\): print\\('매출합계:', r['monthly']\\) \")",
       "Bash(xargs grep:*)",
-      "Bash(grep -E \"\\\\.ts$\")"
+      "Bash(grep -E \"\\\\.ts$\")",
+      "WebFetch(domain:pl-simulation-dashboard.vercel.app)",
+      "Bash(npm install *)",
+      "Bash(npx next *)",
+      "Bash(npm run *)",
+      "Bash(echo \"started pid=$!\")",
+      "Bash(curl -s -o /dev/null -w \"HTTP %{http_code} time=%{time_total}s\\\\n\" http://localhost:3001/)",
+      "Bash(curl -s https://pl-simulation-dashboard.vercel.app/)",
+      "Bash(curl -s https://pl-simulation-dashboard.vercel.app/ -o ref.html)",
+      "Bash(curl -s https://pl-simulation-dashboard.vercel.app/_next/static/chunks/0y1n83wqri.mu.css -o ref.css)",
+      "Bash(curl -s -o /dev/null -w \"HTTP %{http_code}\\\\n\" http://localhost:3001/)",
+      "Bash(tasklist)",
+      "Bash(curl -s -o /dev/null -w \"before-restart HTTP %{http_code}\\\\n\" http://localhost:3001/)",
+      "Bash(netstat -ano)",
+      "Bash(taskkill //F //PID 23512)",
+      "Bash(curl -s -o /dev/null -w 'HTTP %{http_code}\\\\n' http://localhost:3001/api/pl-forecast/__TRACKED_VAR__)",
+      "Bash(curl -s \"http://localhost:3001/api/inventory/shipment-progress\")",
+      "Bash(curl -s \"http://localhost:3001/api/inventory/acc-shipment-ratio\")",
+      "Bash(curl -s \"http://localhost:3001/api/pl-forecast/brand-actual?year=2026\")",
+      "Bash(curl -s \"http://localhost:3001/api/pl-forecast/dv-sp-plan\")",
+      "Bash(curl -s \"http://localhost:3001/api/inventory/retail-sales?year=2026\" -o /dev/null -w \"%{http_code}\\\\n\")",
+      "Bash(curl -s \"http://localhost:3001/api/inventory/retail-sales\" -o /dev/null -w \"%{http_code}\\\\n\")",
+      "Bash(curl -s \"http://localhost:3001/api/inventory/retail-sales?year=2026&brand=MLB&growthRate=0&growthRateHq=0\" -o resp.json -w \"HTTP %{http_code}\\\\n\")",
+      "Bash(grep -aoE '.{0,15}\\(총자산|총부채|총자본\\).{0,15}' ref.html)",
+      "Bash(git add *)"
     ]
   }
 }

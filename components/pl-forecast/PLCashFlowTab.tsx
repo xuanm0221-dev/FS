@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
+import { ChevronDown, ChevronUp, ChevronRight, ChevronLeft } from 'lucide-react';
 import { formatNumber, getRecoveryMonthLabelsAsN월 } from '@/lib/utils';
 import { buildWcPlanByKeyFromBsWorkingCapital } from '@/lib/wc-plan-from-bs';
 import type { TableRow } from '@/lib/types';
@@ -181,7 +182,8 @@ export default function PLCashFlowTab() {
     DISCOVERY: null,
   });
   const [collapsed, setCollapsed] = useState<Set<string>>(
-    new Set(CF_GROUP_KEYS),
+    // 영업활동은 기본 펼침
+    new Set(CF_GROUP_KEYS.filter((k) => k !== 'operating')),
   );
   const [monthsCollapsed, setMonthsCollapsed] = useState(true);
   const [wcCollapsed, setWcCollapsed] = useState<Set<string>>(new Set(WC_GROUP_KEYS));
@@ -1255,59 +1257,58 @@ export default function PLCashFlowTab() {
 
   return (
     <div className="h-[calc(100vh-64px)] overflow-auto bg-gray-50">
-      <div className="sticky top-0 z-[60] bg-gray-100/95 border-b border-gray-300 shadow-sm backdrop-blur">
-        <div className="flex items-center gap-3 px-6 py-3">
-          <span className="text-sm font-medium text-gray-700">2026년 현금흐름표 양식</span>
-          <button
-            type="button"
-            onClick={() => setMonthsCollapsed((prev) => !prev)}
-            className="px-4 py-2 text-sm font-medium rounded-lg bg-gray-200 text-gray-700 hover:bg-gray-300 transition-colors shadow-sm"
-          >
-            {monthsCollapsed ? '월별 펼치기' : '월별 접기'}
-          </button>
-          <span className={`px-3 py-1 text-xs font-medium rounded-full ${loadStatusClassName}`}>{loadStatusLabel}</span>
-          <span className="font-bold text-red-600" style={{ fontSize: '1.125rem' }}>
-            ※ 필수 방문순서: 재고자산(sim) → PL(sim) 순차적으로 방문후 데이터 참고해주세요
-          </span>
-        </div>
-      </div>
-
         <div className="flex flex-1 min-h-0">
           <div className={`${monthsCollapsed ? 'w-1/2' : 'flex-1'} min-w-0 overflow-auto p-6`}>
-          <div className="flex items-center gap-2 mb-3">
-            <h2 className="text-lg font-bold text-gray-900">현금흐름표</h2>
+          <div className="flex flex-wrap items-center gap-2 mb-3">
             <button
               type="button"
-              onClick={toggleAllCF}
-              className="px-3 py-1 text-xs font-medium rounded-md bg-gray-100 text-gray-700 border border-gray-300 hover:bg-gray-200 transition-colors"
+              onClick={() => setMonthsCollapsed((prev) => !prev)}
+              className="inline-flex items-center gap-1.5 rounded-md border border-slate-200 bg-white px-2.5 py-1 text-xs font-medium text-slate-600 transition-colors hover:border-slate-300 hover:bg-slate-50"
             >
-              {isCfAllCollapsed ? '전체 펼치기' : '전체 접기'}
+              {monthsCollapsed ? '월별 펼치기' : '월별 접기'}
+              {monthsCollapsed
+                ? <ChevronRight className="h-3.5 w-3.5 text-slate-400" />
+                : <ChevronLeft className="h-3.5 w-3.5 text-slate-400" />}
             </button>
+            <span className={`inline-flex items-center px-3 py-1 text-xs font-medium rounded-full ${loadStatusClassName}`}>{loadStatusLabel}</span>
+            <span className="text-xs font-semibold text-red-600">
+              ※ 필수 방문순서: 재고자산(sim) → PL(sim) 순차적으로 방문후 데이터 참고해주세요
+            </span>
           </div>
 
-          <div className="overflow-auto" style={{ maxHeight: 'calc(100vh - 220px)' }}>
+          <div className="overflow-auto rounded-2xl border border-slate-200 shadow-sm" style={{ maxHeight: 'calc(100vh - 220px)' }}>
             <table className="w-full border-collapse text-sm">
               <thead className="sticky top-0 z-20 bg-navy text-white">
                 <tr>
-                  <th rowSpan={2} className="border border-gray-300 py-3 px-4 text-left sticky left-0 z-30 bg-navy min-w-[220px]">
-                    계정과목
+                  <th rowSpan={2} className="border-b border-r border-slate-200 py-3 px-4 text-left sticky left-0 z-30 bg-navy min-w-[220px]">
+                    <button
+                      type="button"
+                      onClick={toggleAllCF}
+                      className="inline-flex items-center gap-1.5 text-white hover:text-yellow-300 transition-colors"
+                      title={isCfAllCollapsed ? '전체 펼치기' : '전체 접기'}
+                    >
+                      현금흐름표
+                      {isCfAllCollapsed
+                        ? <ChevronRight className="h-4 w-4" strokeWidth={2.5} />
+                        : <ChevronDown className="h-4 w-4" strokeWidth={2.5} />}
+                    </button>
                   </th>
-                  <th rowSpan={2} className="border border-gray-300 py-3 px-4 text-center min-w-[120px]">2025년(합계)</th>
-                  <th colSpan={2} className="border border-gray-300 py-2 px-4 text-center bg-gray-600">전월계획</th>
+                  <th rowSpan={2} className="border-b border-r border-slate-200 py-3 px-4 text-center min-w-[120px]">2025년(합계)</th>
+                  <th colSpan={2} className="border-b border-r border-slate-200 py-2 px-4 text-center bg-slate-500">전월계획</th>
                   {!monthsCollapsed && PL_CF_MONTH_LABELS.map((month) => (
-                    <th key={`cf-header-${month}`} rowSpan={2} className="border border-gray-300 py-3 px-4 text-center min-w-[84px]">
+                    <th key={`cf-header-${month}`} rowSpan={2} className="border-b border-r border-slate-200 py-3 px-4 text-center min-w-[84px]">
                       {month}
                     </th>
                   ))}
-                  <th colSpan={4} className="border border-gray-300 py-2 px-4 text-center">2026년 Rolling</th>
+                  <th colSpan={4} className="border-b border-r border-slate-200 py-2 px-4 text-center bg-navy-light">2026년 Rolling</th>
                 </tr>
                 <tr>
-                  <th className="border border-gray-300 py-2 px-4 text-center min-w-[120px] bg-gray-600">2026년계획(N-1)</th>
-                  <th className="border border-gray-300 py-2 px-4 text-center min-w-[100px] bg-gray-600">계획-전년</th>
-                  <th className="border border-gray-300 py-2 px-4 text-center min-w-[120px]">2026년(합계)</th>
-                  <th className="border border-gray-300 py-2 px-4 text-center min-w-[100px]">Rolling-전년</th>
-                  <th className="border border-gray-300 py-2 px-4 text-center min-w-[120px]">계획대비증감(금액)</th>
-                  <th className="border border-gray-300 py-2 px-4 text-center min-w-[100px]">계획대비(%)</th>
+                  <th className="border-b border-r border-slate-200 py-2 px-4 text-center min-w-[120px] bg-slate-500">2026년계획(N-1)</th>
+                  <th className="border-b border-r border-slate-200 py-2 px-4 text-center min-w-[100px] bg-slate-500">계획-전년</th>
+                  <th className="border-b border-r border-slate-200 py-2 px-4 text-center min-w-[120px] bg-navy-light">2026년(합계)</th>
+                  <th className="border-b border-r border-slate-200 py-2 px-4 text-center min-w-[100px] bg-navy-light">Rolling-전년</th>
+                  <th className="border-b border-r border-slate-200 py-2 px-4 text-center min-w-[120px] bg-navy-light">계획대비증감(금액)</th>
+                  <th className="border-b border-r border-slate-200 py-2 px-4 text-center min-w-[100px] bg-navy-light">계획대비(%)</th>
                 </tr>
               </thead>
               <tbody>
@@ -1316,6 +1317,18 @@ export default function PLCashFlowTab() {
                   const isMajor = row.level === 0 && !isNetCash;
                   const isMedium = row.level === 1;
                   const indentPx = row.level === 0 ? 12 : row.level === 1 ? 36 : 60;
+                  // 대분류 행 배경색: 계정별 분기 (현금흐름표 탭과 동일)
+                  const majorBg =
+                    row.key === 'operating' ? 'bg-highlight-sky'
+                    : row.key === 'capex' ? 'bg-highlight-pink'
+                    : row.key === 'borrowings' ? 'bg-highlight-mint'
+                    : row.key === 'other_income' ? 'bg-highlight-yellow'
+                    : 'bg-sky-100';
+                  const cellBg = isNetCash
+                    ? 'bg-gray-100'
+                    : isMajor ? majorBg
+                    : isMedium ? 'bg-gray-50'
+                    : 'bg-white';
 
                   return (
                     <tr
@@ -1324,16 +1337,14 @@ export default function PLCashFlowTab() {
                         isNetCash
                           ? 'bg-gray-100'
                           : isMajor
-                            ? 'bg-sky-100 font-semibold'
+                            ? `${majorBg} font-semibold`
                             : isMedium
                               ? 'bg-gray-50'
                               : ''
                       }
                     >
                       <td
-                        className={`border border-gray-300 py-2 px-4 sticky left-0 z-10 ${
-                          isNetCash ? 'bg-gray-100' : isMajor ? 'bg-sky-100' : isMedium ? 'bg-gray-50' : 'bg-white'
-                        }`}
+                        className={`border-b border-r border-slate-200 py-2 px-4 sticky left-0 z-10 ${cellBg}`}
                         style={{ paddingLeft: `${indentPx}px` }}
                       >
                         {row.isGroup ? (
@@ -1342,33 +1353,35 @@ export default function PLCashFlowTab() {
                             <button
                               type="button"
                               onClick={() => toggle(row.key)}
-                              className="text-gray-600 hover:text-gray-900 p-0.5 leading-none"
+                              className="inline-flex items-center text-slate-400 hover:text-slate-700 p-0.5 leading-none"
                             >
-                              {collapsed.has(row.key) ? '▸' : '▾'}
+                              {collapsed.has(row.key)
+                                ? <ChevronRight className="h-3.5 w-3.5" strokeWidth={2.5} />
+                                : <ChevronDown className="h-3.5 w-3.5" strokeWidth={2.5} />}
                             </button>
                           </div>
                         ) : (
                           row.label
                         )}
                       </td>
-                      <td className="border border-gray-300 py-2 px-4 text-right">{formatActual(row.actual2025)}</td>
-                      <td className="border border-gray-300 py-2 px-4 text-right">{cfPlan(row.key) != null ? formatActual(cfPlan(row.key)) : '-'}</td>
-                      <td className={`border border-gray-300 py-2 px-4 text-right ${(cfPlanVsPrev(row) ?? 0) < 0 ? 'text-red-500' : ''}`}>{formatDiffActual(cfPlanVsPrev(row))}</td>
+                      <td className="border-b border-r border-slate-200 py-2 px-4 text-right">{formatActual(row.actual2025)}</td>
+                      <td className="border-b border-r border-slate-200 py-2 px-4 text-right">{cfPlan(row.key) != null ? formatActual(cfPlan(row.key)) : '-'}</td>
+                      <td className={`border-b border-r border-slate-200 py-2 px-4 text-right ${(cfPlanVsPrev(row) ?? 0) < 0 ? 'text-red-500' : ''}`}>{formatDiffActual(cfPlanVsPrev(row))}</td>
                       {!monthsCollapsed && PL_CF_MONTH_LABELS.map((month, monthIndex) => {
                         const monthValue = cfMonthly(row.key, monthIndex);
                         return (
                           <td
                             key={`cf-cell-${row.key}-${month}`}
-                            className={`border border-gray-300 py-2 px-4 text-right ${monthValue == null ? 'text-gray-300' : ''}`}
+                            className={`border-b border-r border-slate-200 py-2 px-4 text-right ${monthValue == null ? 'text-gray-300' : ''}`}
                           >
                             {monthValue == null ? '-' : formatActual(monthValue)}
                           </td>
                         );
                       })}
-                      <td className="border border-gray-300 py-2 px-4 text-right">{formatActual(cf2026(row.key))}</td>
-                      <td className={`border border-gray-300 py-2 px-4 text-right ${(cfYoy(row) ?? 0) < 0 ? 'text-red-500' : ''}`}>{formatDiffActual(cfYoy(row))}</td>
-                      <td className={`border border-gray-300 py-2 px-4 text-right ${(cfPlanVsRollingAmount(row.key) ?? 0) < 0 ? 'text-red-500' : ''}`}>{formatDiffActual(cfPlanVsRollingAmount(row.key))}</td>
-                      <td className="border border-gray-300 py-2 px-4 text-right">{cfPlanVsRollingPct(row.key)}</td>
+                      <td className="border-b border-r border-slate-200 py-2 px-4 text-right">{formatActual(cf2026(row.key))}</td>
+                      <td className={`border-b border-r border-slate-200 py-2 px-4 text-right ${(cfYoy(row) ?? 0) < 0 ? 'text-red-500' : ''}`}>{formatDiffActual(cfYoy(row))}</td>
+                      <td className={`border-b border-r border-slate-200 py-2 px-4 text-right ${(cfPlanVsRollingAmount(row.key) ?? 0) < 0 ? 'text-red-500' : ''}`}>{formatDiffActual(cfPlanVsRollingAmount(row.key))}</td>
+                      <td className="border-b border-r border-slate-200 py-2 px-4 text-right">{cfPlanVsRollingPct(row.key)}</td>
                     </tr>
                   );
                 })}
@@ -1422,69 +1435,68 @@ export default function PLCashFlowTab() {
           </div>
 
           <div className="mt-8">
-            <h3 className="text-base font-semibold text-gray-800 mb-2">현금잔액과 차입금잔액표</h3>
-            <div className="overflow-x-auto border border-gray-300 rounded-lg shadow-sm">
+            <div className="overflow-x-auto border border-slate-200 rounded-2xl shadow-sm">
               <table className="w-full border-collapse text-sm">
                 <thead className="bg-navy text-white">
                   <tr>
-                    <th rowSpan={2} className="border border-gray-300 py-2.5 px-4 text-left sticky left-0 z-10 bg-navy min-w-[200px]">구분</th>
-                    <th rowSpan={2} className="border border-gray-300 py-2.5 px-4 text-center min-w-[120px]">기초잔액</th>
-                    <th colSpan={2} className="border border-gray-300 py-1.5 px-4 text-center bg-gray-600">전월계획</th>
+                    <th rowSpan={2} className="border-b border-r border-slate-200 py-2.5 px-4 text-left sticky left-0 z-10 bg-navy min-w-[200px]">현금잔액과 차입금잔액표</th>
+                    <th rowSpan={2} className="border-b border-r border-slate-200 py-2.5 px-4 text-center min-w-[120px]">기초잔액</th>
+                    <th colSpan={2} className="border-b border-r border-slate-200 py-1.5 px-4 text-center bg-slate-500">전월계획</th>
                     {!monthsCollapsed && PL_CF_MONTH_LABELS.map((month) => (
-                      <th key={`balance-header-${month}`} rowSpan={2} className="border border-gray-300 py-2.5 px-4 text-center min-w-[84px]">
+                      <th key={`balance-header-${month}`} rowSpan={2} className="border-b border-r border-slate-200 py-2.5 px-4 text-center min-w-[84px]">
                         {month}
                       </th>
                     ))}
-                    <th colSpan={4} className="border border-gray-300 py-1.5 px-4 text-center">2026년 Rolling</th>
+                    <th colSpan={4} className="border-b border-r border-slate-200 py-1.5 px-4 text-center bg-navy-light">2026년 Rolling</th>
                   </tr>
                   <tr>
-                    <th className="border border-gray-300 py-1.5 px-4 text-center min-w-[120px] bg-gray-600">2026년계획(N-1)</th>
-                    <th className="border border-gray-300 py-1.5 px-4 text-center min-w-[100px] bg-gray-600">계획-전년</th>
-                    <th className="border border-gray-300 py-1.5 px-4 text-center min-w-[120px]">기말잔액</th>
-                    <th className="border border-gray-300 py-1.5 px-4 text-center min-w-[100px]">Rolling-전년</th>
-                    <th className="border border-gray-300 py-1.5 px-4 text-center min-w-[120px]">계획대비증감(금액)</th>
-                    <th className="border border-gray-300 py-1.5 px-4 text-center min-w-[100px]">계획대비(%)</th>
+                    <th className="border-b border-r border-slate-200 py-1.5 px-4 text-center min-w-[120px] bg-slate-500">2026년계획(N-1)</th>
+                    <th className="border-b border-r border-slate-200 py-1.5 px-4 text-center min-w-[100px] bg-slate-500">계획-전년</th>
+                    <th className="border-b border-r border-slate-200 py-1.5 px-4 text-center min-w-[120px] bg-navy-light">기말잔액</th>
+                    <th className="border-b border-r border-slate-200 py-1.5 px-4 text-center min-w-[100px] bg-navy-light">Rolling-전년</th>
+                    <th className="border-b border-r border-slate-200 py-1.5 px-4 text-center min-w-[120px] bg-navy-light">계획대비증감(금액)</th>
+                    <th className="border-b border-r border-slate-200 py-1.5 px-4 text-center min-w-[100px] bg-navy-light">계획대비(%)</th>
                   </tr>
                 </thead>
                 <tbody className="bg-gray-50">
                   <tr>
-                    <td className="border border-gray-300 py-2 px-4 font-medium sticky left-0 z-10 bg-gray-100 text-gray-800">현금잔액</td>
-                    <td className="border border-gray-300 py-2 px-4 text-right bg-gray-50">{formatActual(cashBorrowingOpening('cash'))}</td>
-                    <td className="border border-gray-300 py-2 px-4 text-right bg-gray-50">{cashDebtPlanValue('cash') != null ? formatActual(cashDebtPlanValue('cash')) : '-'}</td>
-                    <td className={`border border-gray-300 py-2 px-4 text-right bg-gray-50 ${(cashDebtPlanVsPrev('cash') ?? 0) < 0 ? 'text-red-500' : ''}`}>{formatDiffActual(cashDebtPlanVsPrev('cash'))}</td>
+                    <td className="border-b border-r border-slate-200 py-2 px-4 font-medium sticky left-0 z-10 bg-gray-100 text-gray-800">현금잔액</td>
+                    <td className="border-b border-r border-slate-200 py-2 px-4 text-right bg-gray-50">{formatActual(cashBorrowingOpening('cash'))}</td>
+                    <td className="border-b border-r border-slate-200 py-2 px-4 text-right bg-gray-50">{cashDebtPlanValue('cash') != null ? formatActual(cashDebtPlanValue('cash')) : '-'}</td>
+                    <td className={`border-b border-r border-slate-200 py-2 px-4 text-right bg-gray-50 ${(cashDebtPlanVsPrev('cash') ?? 0) < 0 ? 'text-red-500' : ''}`}>{formatDiffActual(cashDebtPlanVsPrev('cash'))}</td>
                     {!monthsCollapsed && PL_CF_MONTH_LABELS.map((month, monthIndex) => {
                       const monthValue = cashBorrowingMonthly('cash', monthIndex);
                       return (
-                        <td key={`cash-cell-${month}`} className={`border border-gray-300 py-2 px-4 text-right bg-gray-50 ${monthValue == null ? 'text-gray-300' : ''}`}>
+                        <td key={`cash-cell-${month}`} className={`border-b border-r border-slate-200 py-2 px-4 text-right bg-gray-50 ${monthValue == null ? 'text-gray-300' : ''}`}>
                           {monthValue == null ? '-' : formatActual(monthValue)}
                         </td>
                       );
                     })}
-                    <td className="border border-gray-300 py-2 px-4 text-right bg-gray-50">{formatActual(cashBorrowing2026('cash'))}</td>
-                    <td className={`border border-gray-300 py-2 px-4 text-right bg-gray-50 ${(cashBorrowingYoy('cash') ?? 0) < 0 ? 'text-red-500' : ''}`}>{formatDiffActual(cashBorrowingYoy('cash'))}</td>
-                    <td className={`border border-gray-300 py-2 px-4 text-right bg-gray-50 ${(cashDebtVsRollingAmount('cash') ?? 0) < 0 ? 'text-red-500' : ''}`}>{formatDiffActual(cashDebtVsRollingAmount('cash'))}</td>
-                    <td className="border border-gray-300 py-2 px-4 text-right bg-gray-50">{cashDebtVsRollingPct('cash')}</td>
+                    <td className="border-b border-r border-slate-200 py-2 px-4 text-right bg-gray-50">{formatActual(cashBorrowing2026('cash'))}</td>
+                    <td className={`border-b border-r border-slate-200 py-2 px-4 text-right bg-gray-50 ${(cashBorrowingYoy('cash') ?? 0) < 0 ? 'text-red-500' : ''}`}>{formatDiffActual(cashBorrowingYoy('cash'))}</td>
+                    <td className={`border-b border-r border-slate-200 py-2 px-4 text-right bg-gray-50 ${(cashDebtVsRollingAmount('cash') ?? 0) < 0 ? 'text-red-500' : ''}`}>{formatDiffActual(cashDebtVsRollingAmount('cash'))}</td>
+                    <td className="border-b border-r border-slate-200 py-2 px-4 text-right bg-gray-50">{cashDebtVsRollingPct('cash')}</td>
                   </tr>
                   <tr>
-                    <td className="border border-gray-300 py-2 px-4 font-medium sticky left-0 z-10 bg-gray-100 text-gray-800">차입금잔액</td>
-                    <td className="border border-gray-300 py-2 px-4 text-right bg-gray-50">{formatActual(cashBorrowingOpening('borrowing'))}</td>
-                    <td className="border border-gray-300 py-2 px-4 text-right bg-gray-50">{cashDebtPlanValue('borrowing') != null ? formatActual(cashDebtPlanValue('borrowing')) : '-'}</td>
-                    <td className={`border border-gray-300 py-2 px-4 text-right bg-gray-50 ${(cashDebtPlanVsPrev('borrowing') ?? 0) < 0 ? 'text-red-500' : ''}`}>{formatDiffActual(cashDebtPlanVsPrev('borrowing'))}</td>
+                    <td className="border-b border-r border-slate-200 py-2 px-4 font-medium sticky left-0 z-10 bg-gray-100 text-gray-800">차입금잔액</td>
+                    <td className="border-b border-r border-slate-200 py-2 px-4 text-right bg-gray-50">{formatActual(cashBorrowingOpening('borrowing'))}</td>
+                    <td className="border-b border-r border-slate-200 py-2 px-4 text-right bg-gray-50">{cashDebtPlanValue('borrowing') != null ? formatActual(cashDebtPlanValue('borrowing')) : '-'}</td>
+                    <td className={`border-b border-r border-slate-200 py-2 px-4 text-right bg-gray-50 ${(cashDebtPlanVsPrev('borrowing') ?? 0) < 0 ? 'text-red-500' : ''}`}>{formatDiffActual(cashDebtPlanVsPrev('borrowing'))}</td>
                     {!monthsCollapsed && PL_CF_MONTH_LABELS.map((month, monthIndex) => {
                       const monthValue = cashBorrowingMonthly('borrowing', monthIndex);
                       return (
                         <td
                           key={`borrowing-cell-${month}`}
-                          className={`border border-gray-300 py-2 px-4 text-right bg-gray-50 ${monthValue == null ? 'text-gray-300' : ''}`}
+                          className={`border-b border-r border-slate-200 py-2 px-4 text-right bg-gray-50 ${monthValue == null ? 'text-gray-300' : ''}`}
                         >
                           {monthValue == null ? '-' : formatActual(monthValue)}
                         </td>
                       );
                     })}
-                    <td className="border border-gray-300 py-2 px-4 text-right bg-gray-50">{formatActual(cashBorrowing2026('borrowing'))}</td>
-                    <td className={`border border-gray-300 py-2 px-4 text-right bg-gray-50 ${(cashBorrowingYoy('borrowing') ?? 0) < 0 ? 'text-red-500' : ''}`}>{formatDiffActual(cashBorrowingYoy('borrowing'))}</td>
-                    <td className={`border border-gray-300 py-2 px-4 text-right bg-gray-50 ${(cashDebtVsRollingAmount('borrowing') ?? 0) < 0 ? 'text-red-500' : ''}`}>{formatDiffActual(cashDebtVsRollingAmount('borrowing'))}</td>
-                    <td className="border border-gray-300 py-2 px-4 text-right bg-gray-50">{cashDebtVsRollingPct('borrowing')}</td>
+                    <td className="border-b border-r border-slate-200 py-2 px-4 text-right bg-gray-50">{formatActual(cashBorrowing2026('borrowing'))}</td>
+                    <td className={`border-b border-r border-slate-200 py-2 px-4 text-right bg-gray-50 ${(cashBorrowingYoy('borrowing') ?? 0) < 0 ? 'text-red-500' : ''}`}>{formatDiffActual(cashBorrowingYoy('borrowing'))}</td>
+                    <td className={`border-b border-r border-slate-200 py-2 px-4 text-right bg-gray-50 ${(cashDebtVsRollingAmount('borrowing') ?? 0) < 0 ? 'text-red-500' : ''}`}>{formatDiffActual(cashDebtVsRollingAmount('borrowing'))}</td>
+                    <td className="border-b border-r border-slate-200 py-2 px-4 text-right bg-gray-50">{cashDebtVsRollingPct('borrowing')}</td>
                   </tr>
                 </tbody>
               </table>
@@ -1492,37 +1504,39 @@ export default function PLCashFlowTab() {
           </div>
 
           <div className="mt-8">
-            <div className="flex items-center gap-2 mb-2">
-              <h3 className="text-base font-semibold text-gray-800">운전자본표</h3>
-              <button
-                type="button"
-                onClick={toggleAllWC}
-                className="px-3 py-1 text-xs font-medium rounded-md bg-gray-100 text-gray-700 border border-gray-300 hover:bg-gray-200 transition-colors"
-              >
-                {isWcAllCollapsed ? '전체 펼치기' : '전체 접기'}
-              </button>
-            </div>
-            <div className="overflow-x-auto border border-gray-300 rounded-lg shadow-sm">
+            <div className="overflow-x-auto border border-slate-200 rounded-2xl shadow-sm">
               <table className="w-full border-collapse text-sm">
                 <thead className="bg-navy text-white">
                   <tr>
-                    <th rowSpan={2} className="border border-gray-300 py-3 px-4 text-left sticky left-0 z-20 bg-navy min-w-[200px]">계정과목</th>
-                    <th rowSpan={2} className="border border-gray-300 py-3 px-4 text-center min-w-[120px]">2025년(기말)</th>
-                    <th colSpan={2} className="border border-gray-300 py-2 px-4 text-center bg-gray-600">전월계획</th>
+                    <th rowSpan={2} className="border-b border-r border-slate-200 py-3 px-4 text-left sticky left-0 z-20 bg-navy min-w-[200px]">
+                      <button
+                        type="button"
+                        onClick={toggleAllWC}
+                        className="inline-flex items-center gap-1.5 text-white hover:text-yellow-300 transition-colors"
+                        title={isWcAllCollapsed ? '전체 펼치기' : '전체 접기'}
+                      >
+                        운전자본표
+                        {isWcAllCollapsed
+                          ? <ChevronRight className="h-4 w-4" strokeWidth={2.5} />
+                          : <ChevronDown className="h-4 w-4" strokeWidth={2.5} />}
+                      </button>
+                    </th>
+                    <th rowSpan={2} className="border-b border-r border-slate-200 py-3 px-4 text-center min-w-[120px]">2025년(기말)</th>
+                    <th colSpan={2} className="border-b border-r border-slate-200 py-2 px-4 text-center bg-slate-500">전월계획</th>
                     {!monthsCollapsed && PL_CF_MONTH_LABELS.map((month, monthIndex) => (
-                      <th key={`wc-header-${month}`} rowSpan={2} className="border border-gray-300 py-3 px-4 text-center min-w-[84px]">
+                      <th key={`wc-header-${month}`} rowSpan={2} className="border-b border-r border-slate-200 py-3 px-4 text-center min-w-[84px]">
                         {formatWorkingCapitalMonthHeader(month, monthIndex)}
                       </th>
                     ))}
-                    <th colSpan={4} className="border border-gray-300 py-2 px-4 text-center">2026년 Rolling</th>
+                    <th colSpan={4} className="border-b border-r border-slate-200 py-2 px-4 text-center bg-navy-light">2026년 Rolling</th>
                   </tr>
                   <tr>
-                    <th className="border border-gray-300 py-2 px-4 text-center min-w-[120px] bg-gray-600">2026년연간계획(N-1)</th>
-                    <th className="border border-gray-300 py-2 px-4 text-center min-w-[100px] bg-gray-600">계획-전년</th>
-                    <th className="border border-gray-300 py-2 px-4 text-center min-w-[120px]">2026년(기말)</th>
-                    <th className="border border-gray-300 py-2 px-4 text-center min-w-[100px]">Rolling-전년</th>
-                    <th className="border border-gray-300 py-2 px-4 text-center min-w-[120px]">계획대비증감(금액)</th>
-                    <th className="border border-gray-300 py-2 px-4 text-center min-w-[100px]">계획대비(%)</th>
+                    <th className="border-b border-r border-slate-200 py-2 px-4 text-center min-w-[120px] bg-slate-500">2026년연간계획(N-1)</th>
+                    <th className="border-b border-r border-slate-200 py-2 px-4 text-center min-w-[100px] bg-slate-500">계획-전년</th>
+                    <th className="border-b border-r border-slate-200 py-2 px-4 text-center min-w-[120px] bg-navy-light">2026년(기말)</th>
+                    <th className="border-b border-r border-slate-200 py-2 px-4 text-center min-w-[100px] bg-navy-light">Rolling-전년</th>
+                    <th className="border-b border-r border-slate-200 py-2 px-4 text-center min-w-[120px] bg-navy-light">계획대비증감(금액)</th>
+                    <th className="border-b border-r border-slate-200 py-2 px-4 text-center min-w-[100px] bg-navy-light">계획대비(%)</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -1530,13 +1544,23 @@ export default function PLCashFlowTab() {
                     const isTotal = row.key === 'wc_total';
                     const isMonthDiff = row.key === 'wc_mom';
                     const isLevel1 = !isTotal && !isMonthDiff && row.level === 1;
-                    const cellBg = isTotal ? 'bg-yellow-50' : isLevel1 ? 'bg-sky-100' : isMonthDiff ? 'bg-gray-100' : 'bg-white';
+                    // 계정별 색상 분기 (운전자본표 탭과 동일)
+                    const level1Bg =
+                      row.key === 'wc_ar' ? 'bg-highlight-sky'
+                      : row.key === 'wc_inventory' ? 'bg-highlight-pink'
+                      : row.key === 'wc_ap' ? 'bg-highlight-mint'
+                      : 'bg-sky-100';
+                    const cellBg = isTotal
+                      ? 'bg-highlight-yellow'
+                      : isLevel1 ? level1Bg
+                      : isMonthDiff ? 'bg-white'
+                      : 'bg-white';
                     const indentPx = row.level === 2 ? 36 : 12;
 
                     return (
                       <tr key={row.key} className={cellBg + (isTotal || isLevel1 ? ' font-semibold' : '')}>
                         <td
-                          className={`border border-gray-300 py-2 px-4 sticky left-0 z-10 ${cellBg}`}
+                          className={`border-b border-r border-slate-200 py-2 px-4 sticky left-0 z-10 ${cellBg}`}
                           style={{ paddingLeft: `${indentPx}px` }}
                         >
                           {row.isGroup ? (
@@ -1545,30 +1569,32 @@ export default function PLCashFlowTab() {
                               <button
                                 type="button"
                                 onClick={() => toggleWorkingCapital(row.key)}
-                                className="text-gray-600 hover:text-gray-900 p-0.5 leading-none"
+                                className="inline-flex items-center text-slate-400 hover:text-slate-700 p-0.5 leading-none"
                               >
-                                {wcCollapsed.has(row.key) ? '▸' : '▾'}
+                                {wcCollapsed.has(row.key)
+                                  ? <ChevronRight className="h-3.5 w-3.5" strokeWidth={2.5} />
+                                  : <ChevronDown className="h-3.5 w-3.5" strokeWidth={2.5} />}
                               </button>
                             </div>
                           ) : (
                             row.label
                           )}
                         </td>
-                        <td className={`border border-gray-300 py-2 px-4 text-right ${cellBg}`}>{formatActual(row.actual2025)}</td>
-                        <td className={`border border-gray-300 py-2 px-4 text-right ${cellBg}`}>{wcPlanK(row.key) != null ? formatKValue(wcPlanK(row.key)) : '-'}</td>
-                        <td className={`border border-gray-300 py-2 px-4 text-right ${cellBg} ${(wcPlanVsPrev(row) ?? 0) < 0 ? 'text-red-500' : ''}`}>{formatDiffK(wcPlanVsPrev(row))}</td>
+                        <td className={`border-b border-r border-slate-200 py-2 px-4 text-right ${cellBg}`}>{formatActual(row.actual2025)}</td>
+                        <td className={`border-b border-r border-slate-200 py-2 px-4 text-right ${cellBg}`}>{wcPlanK(row.key) != null ? formatKValue(wcPlanK(row.key)) : '-'}</td>
+                        <td className={`border-b border-r border-slate-200 py-2 px-4 text-right ${cellBg} ${(wcPlanVsPrev(row) ?? 0) < 0 ? 'text-red-500' : ''}`}>{formatDiffK(wcPlanVsPrev(row))}</td>
                         {!monthsCollapsed && PL_CF_MONTH_LABELS.map((month, monthIndex) => {
                           const monthValue = workingCapitalMonthly(row.key, monthIndex);
                           return (
-                            <td key={`wc-cell-${row.key}-${month}`} className={`border border-gray-300 py-2 px-4 text-right ${monthValue == null ? 'text-gray-300' : ''} ${cellBg}`}>
+                            <td key={`wc-cell-${row.key}-${month}`} className={`border-b border-r border-slate-200 py-2 px-4 text-right ${monthValue == null ? 'text-gray-300' : ''} ${cellBg}`}>
                               {monthValue == null ? '-' : formatKValue(monthValue)}
                             </td>
                           );
                         })}
-                        <td className={`border border-gray-300 py-2 px-4 text-right ${cellBg}`}>{formatKValue(workingCapital2026(row.key))}</td>
-                        <td className={`border border-gray-300 py-2 px-4 text-right ${cellBg} ${(workingCapitalYoy(row) ?? 0) < 0 ? 'text-red-500' : ''}`}>{isMonthDiff ? '-' : formatDiffK(workingCapitalYoy(row))}</td>
-                        <td className={`border border-gray-300 py-2 px-4 text-right ${cellBg} ${(wcPlanVsRollingAmount(row.key) ?? 0) < 0 ? 'text-red-500' : ''}`}>{formatDiffK(wcPlanVsRollingAmount(row.key))}</td>
-                        <td className={`border border-gray-300 py-2 px-4 text-right ${cellBg}`}>{wcPlanVsRollingPct(row.key)}</td>
+                        <td className={`border-b border-r border-slate-200 py-2 px-4 text-right ${cellBg}`}>{formatKValue(workingCapital2026(row.key))}</td>
+                        <td className={`border-b border-r border-slate-200 py-2 px-4 text-right ${cellBg} ${(workingCapitalYoy(row) ?? 0) < 0 ? 'text-red-500' : ''}`}>{isMonthDiff ? '-' : formatDiffK(workingCapitalYoy(row))}</td>
+                        <td className={`border-b border-r border-slate-200 py-2 px-4 text-right ${cellBg} ${(wcPlanVsRollingAmount(row.key) ?? 0) < 0 ? 'text-red-500' : ''}`}>{formatDiffK(wcPlanVsRollingAmount(row.key))}</td>
+                        <td className={`border-b border-r border-slate-200 py-2 px-4 text-right ${cellBg}`}>{wcPlanVsRollingPct(row.key)}</td>
                       </tr>
                     );
                   })}
@@ -1591,28 +1617,34 @@ export default function PLCashFlowTab() {
               <button
                 type="button"
                 onClick={() => setWcLegendCollapsed((prev) => !prev)}
-                className="px-3 py-1 text-xs font-medium rounded-md bg-gray-100 text-gray-700 border border-gray-300 hover:bg-gray-200 transition-colors"
+                className="inline-flex items-center gap-1.5 rounded-md border border-slate-200 bg-white px-2.5 py-1 text-xs font-medium text-slate-600 transition-colors hover:border-slate-300 hover:bg-slate-50"
               >
                 {wcLegendCollapsed ? '범례 펼치기' : '범례 접기'}
+                {wcLegendCollapsed
+                  ? <ChevronDown className="h-3.5 w-3.5 text-slate-400" />
+                  : <ChevronUp className="h-3.5 w-3.5 text-slate-400" />}
               </button>
               <button
                 type="button"
                 onClick={() => setWcSupportCollapsed((prev) => !prev)}
-                className="px-3 py-1 text-xs font-medium rounded-md bg-gray-100 text-gray-700 border border-gray-300 hover:bg-gray-200 transition-colors"
+                className="inline-flex items-center gap-1.5 rounded-md border border-slate-200 bg-white px-2.5 py-1 text-xs font-medium text-slate-600 transition-colors hover:border-slate-300 hover:bg-slate-50"
               >
                 {wcSupportCollapsed ? '보조지표 펼치기' : '보조지표 접기'}
+                {wcSupportCollapsed
+                  ? <ChevronDown className="h-3.5 w-3.5 text-slate-400" />
+                  : <ChevronUp className="h-3.5 w-3.5 text-slate-400" />}
               </button>
             </div>
             {!wcSupportCollapsed && (
-            <div className="mt-3 overflow-x-auto border border-gray-300 rounded-lg shadow-sm">
+            <div className="mt-3 overflow-x-auto border border-slate-200 rounded-2xl shadow-sm">
               <table className="w-full border-collapse text-sm">
                 <thead className="bg-slate-700 text-white">
                   <tr>
-                    <th className="border border-gray-300 py-2.5 px-4 text-left min-w-[180px]">항목</th>
+                    <th className="border-b border-r border-slate-200 py-2.5 px-4 text-left min-w-[180px]">항목</th>
                     {PL_CF_MONTH_LABELS.map((month, monthIndex) => (
                       <th
                         key={`wc-support-header-${month}`}
-                        className="border border-gray-300 py-2.5 px-4 text-center min-w-[84px]"
+                        className="border-b border-r border-slate-200 py-2.5 px-4 text-center min-w-[84px]"
                       >
                         {formatWorkingCapitalMonthHeader(month, monthIndex)}
                       </th>
@@ -1621,7 +1653,7 @@ export default function PLCashFlowTab() {
                 </thead>
                 <tbody>
                   <tr className="bg-slate-100 font-semibold">
-                    <td className="border border-gray-300 py-2 px-4 text-slate-800">Tag재고 합계</td>
+                    <td className="border-b border-r border-slate-200 py-2 px-4 text-slate-800">Tag재고 합계</td>
                     {PL_CF_MONTH_LABELS.map((month, monthIndex) => {
                       const total = TAG_COST_RATIO_BRANDS.reduce<number | null>((sum, brand) => {
                         const value = toDisplayK(inventoryMonthlyTotals[brand][monthIndex] ?? null);
@@ -1631,7 +1663,7 @@ export default function PLCashFlowTab() {
                       return (
                         <td
                           key={`tag-inventory-group-${month}`}
-                          className={`border border-gray-300 py-2 px-4 text-right ${total == null ? 'text-gray-300' : 'text-slate-800'}`}
+                          className={`border-b border-r border-slate-200 py-2 px-4 text-right ${total == null ? 'text-gray-300' : 'text-slate-800'}`}
                         >
                           {total == null ? '-' : formatKValue(total)}
                         </td>
@@ -1640,7 +1672,7 @@ export default function PLCashFlowTab() {
                   </tr>
                   {TAG_COST_RATIO_BRANDS.map((brand) => (
                     <tr key={`tag-inventory-row-${brand}`} className="bg-slate-50">
-                      <td className="border border-gray-300 py-2 px-4 text-slate-800" style={{ paddingLeft: '28px' }}>
+                      <td className="border-b border-r border-slate-200 py-2 px-4 text-slate-800" style={{ paddingLeft: '28px' }}>
                         {brand}
                       </td>
                       {PL_CF_MONTH_LABELS.map((month, monthIndex) => {
@@ -1648,7 +1680,7 @@ export default function PLCashFlowTab() {
                         return (
                           <td
                             key={`tag-inventory-value-${brand}-${month}`}
-                            className="border border-gray-300 py-2 px-4 text-right text-slate-700"
+                            className="border-b border-r border-slate-200 py-2 px-4 text-right text-slate-700"
                           >
                             {monthValue == null ? '-' : formatKValue(monthValue)}
                           </td>
@@ -1657,11 +1689,11 @@ export default function PLCashFlowTab() {
                     </tr>
                   ))}
                   <tr className="bg-slate-100 font-semibold">
-                    <td className="border border-gray-300 py-2 px-4 text-slate-800">평가감율</td>
+                    <td className="border-b border-r border-slate-200 py-2 px-4 text-slate-800">평가감율</td>
                     {PL_CF_MONTH_LABELS.map((month) => (
                       <td
                         key={`valuation-rate-group-${month}`}
-                        className="border border-gray-300 py-2 px-4 text-center text-gray-300"
+                        className="border-b border-r border-slate-200 py-2 px-4 text-center text-gray-300"
                       >
                         -
                       </td>
@@ -1669,13 +1701,13 @@ export default function PLCashFlowTab() {
                   </tr>
                   {TAG_COST_RATIO_BRANDS.map((brand) => (
                     <tr key={`valuation-rate-row-${brand}`} className="bg-slate-50">
-                      <td className="border border-gray-300 py-2 px-4 text-slate-800" style={{ paddingLeft: '28px' }}>
+                      <td className="border-b border-r border-slate-200 py-2 px-4 text-slate-800" style={{ paddingLeft: '28px' }}>
                         {brand}
                       </td>
                       {PL_CF_MONTH_LABELS.map((month) => (
                         <td
                           key={`valuation-rate-value-${brand}-${month}`}
-                          className="border border-gray-300 py-2 px-4 text-right text-slate-700"
+                          className="border-b border-r border-slate-200 py-2 px-4 text-right text-slate-700"
                         >
                           {formatPercent4(VALUATION_REDUCTION_RATE[brand])}
                         </td>
@@ -1683,7 +1715,7 @@ export default function PLCashFlowTab() {
                     </tr>
                   ))}
                   <tr className="bg-slate-100 font-semibold">
-                    <td className="border border-gray-300 py-2 px-4 text-slate-800">매출채권합계(대리상)</td>
+                    <td className="border-b border-r border-slate-200 py-2 px-4 text-slate-800">매출채권합계(대리상)</td>
                     {PL_CF_MONTH_LABELS.map((month, monthIndex) => {
                       const total = TAG_COST_RATIO_BRANDS.reduce<number | null>((sum, brand) => {
                         const value = shipmentMonthlyByBrand[brand][monthIndex];
@@ -1694,7 +1726,7 @@ export default function PLCashFlowTab() {
                       return (
                         <td
                           key={`ar-total-group-${month}`}
-                          className={`border border-gray-300 py-2 px-4 text-right ${displayK == null ? 'text-gray-300' : 'text-slate-800'}`}
+                          className={`border-b border-r border-slate-200 py-2 px-4 text-right ${displayK == null ? 'text-gray-300' : 'text-slate-800'}`}
                         >
                           {displayK == null ? '-' : formatKValue(displayK)}
                         </td>
@@ -1703,7 +1735,7 @@ export default function PLCashFlowTab() {
                   </tr>
                   {TAG_COST_RATIO_BRANDS.map((brand) => (
                     <tr key={`ar-total-row-${brand}`} className="bg-slate-50">
-                      <td className="border border-gray-300 py-2 px-4 text-slate-800" style={{ paddingLeft: '28px' }}>
+                      <td className="border-b border-r border-slate-200 py-2 px-4 text-slate-800" style={{ paddingLeft: '28px' }}>
                         {brand}
                       </td>
                       {PL_CF_MONTH_LABELS.map((month, monthIndex) => {
@@ -1712,7 +1744,7 @@ export default function PLCashFlowTab() {
                         return (
                           <td
                             key={`ar-total-value-${brand}-${month}`}
-                            className={`border border-gray-300 py-2 px-4 text-right ${displayK == null ? 'text-gray-300' : 'text-slate-700'}`}
+                            className={`border-b border-r border-slate-200 py-2 px-4 text-right ${displayK == null ? 'text-gray-300' : 'text-slate-700'}`}
                           >
                             {displayK == null ? '-' : formatKValue(displayK)}
                           </td>
@@ -1721,7 +1753,7 @@ export default function PLCashFlowTab() {
                     </tr>
                   ))}
                   <tr className="bg-slate-100 font-semibold">
-                    <td className="border border-gray-300 py-2 px-4 text-slate-800">매입채무합계(HQ)</td>
+                    <td className="border-b border-r border-slate-200 py-2 px-4 text-slate-800">매입채무합계(HQ)</td>
                     {PL_CF_MONTH_LABELS.map((month, monthIndex) => {
                       const total = TAG_COST_RATIO_BRANDS.reduce<number | null>((sum, brand) => {
                         const value = purchaseMonthlyByBrand[brand][monthIndex];
@@ -1732,7 +1764,7 @@ export default function PLCashFlowTab() {
                       return (
                         <td
                           key={`ap-total-group-${month}`}
-                          className={`border border-gray-300 py-2 px-4 text-right ${displayK == null ? 'text-gray-300' : 'text-slate-800'}`}
+                          className={`border-b border-r border-slate-200 py-2 px-4 text-right ${displayK == null ? 'text-gray-300' : 'text-slate-800'}`}
                         >
                           {displayK == null ? '-' : formatKValue(displayK)}
                         </td>
@@ -1741,7 +1773,7 @@ export default function PLCashFlowTab() {
                   </tr>
                   {TAG_COST_RATIO_BRANDS.map((brand) => (
                     <tr key={`ap-total-row-${brand}`} className="bg-slate-50">
-                      <td className="border border-gray-300 py-2 px-4 text-slate-800" style={{ paddingLeft: '28px' }}>
+                      <td className="border-b border-r border-slate-200 py-2 px-4 text-slate-800" style={{ paddingLeft: '28px' }}>
                         {brand}
                       </td>
                       {PL_CF_MONTH_LABELS.map((month, monthIndex) => {
@@ -1750,7 +1782,7 @@ export default function PLCashFlowTab() {
                         return (
                           <td
                             key={`ap-total-value-${brand}-${month}`}
-                            className={`border border-gray-300 py-2 px-4 text-right ${displayK == null ? 'text-gray-300' : 'text-slate-700'}`}
+                            className={`border-b border-r border-slate-200 py-2 px-4 text-right ${displayK == null ? 'text-gray-300' : 'text-slate-700'}`}
                           >
                             {displayK == null ? '-' : formatKValue(displayK)}
                           </td>
@@ -1759,11 +1791,11 @@ export default function PLCashFlowTab() {
                     </tr>
                   ))}
                   <tr className="bg-white font-semibold">
-                    <td className="border border-gray-300 py-2 px-4 text-slate-800">Tag대비원가율</td>
+                    <td className="border-b border-r border-slate-200 py-2 px-4 text-slate-800">Tag대비원가율</td>
                     {PL_CF_MONTH_LABELS.map((month) => (
                       <td
                         key={`tag-cost-ratio-group-${month}`}
-                        className="border border-gray-300 py-2 px-4 text-center text-gray-300"
+                        className="border-b border-r border-slate-200 py-2 px-4 text-center text-gray-300"
                       >
                         -
                       </td>
@@ -1771,13 +1803,13 @@ export default function PLCashFlowTab() {
                   </tr>
                   {TAG_COST_RATIO_BRANDS.map((brand) => (
                     <tr key={`tag-cost-ratio-row-${brand}`} className="bg-white">
-                      <td className="border border-gray-300 py-2 px-4 text-slate-800" style={{ paddingLeft: '28px' }}>
+                      <td className="border-b border-r border-slate-200 py-2 px-4 text-slate-800" style={{ paddingLeft: '28px' }}>
                         {brand}
                       </td>
                       {PL_CF_MONTH_LABELS.map((month) => (
                         <td
                           key={`tag-cost-ratio-value-${brand}-${month}`}
-                          className="border border-gray-300 py-2 px-4 text-right text-slate-700"
+                          className="border-b border-r border-slate-200 py-2 px-4 text-right text-slate-700"
                         >
                           {formatPercent4(tagCostRatio[brand])}
                         </td>
@@ -1792,14 +1824,14 @@ export default function PLCashFlowTab() {
 
           <div className="mt-8">
             <h3 className="text-base font-semibold text-gray-800 mb-2">대리상 여신회수 계획 ({creditRecovery.baseYearMonth} 기준)</h3>
-            <div className="overflow-x-auto border border-gray-300 rounded-lg shadow-sm">
+            <div className="overflow-x-auto border border-slate-200 rounded-2xl shadow-sm">
               <table className="w-full border-collapse text-sm">
                 <thead className="bg-navy text-white">
                   <tr>
-                    <th className="border border-gray-300 py-3 px-4 text-center min-w-[100px]">대리상선수금</th>
-                    <th className="border border-gray-300 py-3 px-4 text-center min-w-[100px]">대리상 채권</th>
+                    <th className="border-b border-r border-slate-200 py-3 px-4 text-center min-w-[100px]">대리상선수금</th>
+                    <th className="border-b border-r border-slate-200 py-3 px-4 text-center min-w-[100px]">대리상 채권</th>
                     {creditRecoveryHeaders.map((header) => (
-                      <th key={header} className="border border-gray-300 py-3 px-4 text-center min-w-[100px]">
+                      <th key={header} className="border-b border-r border-slate-200 py-3 px-4 text-center min-w-[100px]">
                         {header}
                       </th>
                     ))}
@@ -1807,10 +1839,10 @@ export default function PLCashFlowTab() {
                 </thead>
                 <tbody className="bg-gray-50">
                   <tr>
-                    <td className="border border-gray-300 py-2 px-4 text-right">{formatActual(creditRecovery.dealerAdvance)}</td>
-                    <td className="border border-gray-300 py-2 px-4 text-right">{formatActual(creditRecovery.dealerReceivable)}</td>
+                    <td className="border-b border-r border-slate-200 py-2 px-4 text-right">{formatActual(creditRecovery.dealerAdvance)}</td>
+                    <td className="border-b border-r border-slate-200 py-2 px-4 text-right">{formatActual(creditRecovery.dealerReceivable)}</td>
                     {creditRecovery.recoveries.map((value, index) => (
-                      <td key={`credit-recovery-${index}`} className="border border-gray-300 py-2 px-4 text-right">
+                      <td key={`credit-recovery-${index}`} className="border-b border-r border-slate-200 py-2 px-4 text-right">
                         {formatActual(value)}
                       </td>
                     ))}

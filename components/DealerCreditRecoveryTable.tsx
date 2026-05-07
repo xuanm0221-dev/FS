@@ -13,7 +13,7 @@ export default function DealerCreditRecoveryTable({ data }: DealerCreditRecovery
   const formatCell = (v: number) =>
     v < 0 ? `(${formatNumber(Math.abs(v), false, false)})` : formatNumber(v, false, false);
   const cellClass = (v: number) =>
-    'border border-gray-300 py-2 px-4 text-right' + (v < 0 ? ' text-red-600' : '');
+    'border border-slate-200 py-2 px-4 text-right' + (v < 0 ? ' text-red-600' : '');
 
   const recoveryHeaders = useMemo(
     () => getRecoveryMonthLabelsAsN월(baseYearMonth, recoveries.length),
@@ -27,14 +27,14 @@ export default function DealerCreditRecoveryTable({ data }: DealerCreditRecovery
       <h3 className="text-base font-semibold text-gray-800 mb-2">
         대리상 여신회수 계획 ({baseYearMonth} 기준)
       </h3>
-      <div className="overflow-x-auto border border-gray-300 rounded-lg shadow-sm">
+      <div className="overflow-x-auto border border-slate-200 rounded-2xl shadow-sm">
         <table className="w-full border-collapse text-sm">
           <thead className="bg-navy text-white">
             <tr>
               {tableHeaders.map((h, i) => (
                 <th
                   key={i}
-                  className="border border-gray-300 py-3 px-4 text-center min-w-[100px]"
+                  className="border border-slate-200 py-3 px-4 text-center min-w-[100px]"
                 >
                   {h}
                 </th>

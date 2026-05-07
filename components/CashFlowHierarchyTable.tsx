@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useMemo, useEffect, useRef } from 'react';
+import { ChevronDown, ChevronUp, ChevronRight } from 'lucide-react';
 import { formatNumber } from '@/lib/utils';
 import type { CFHierarchyApiRow } from '@/app/api/fs/cf-hierarchy/route';
 
@@ -101,65 +102,71 @@ export default function CashFlowHierarchyTable({
   };
 
   const cellClass = (value: number) =>
-    value < 0 ? 'border border-gray-300 py-2 px-4 text-right text-red-600' : 'border border-gray-300 py-2 px-4 text-right';
+    value < 0
+      ? 'border-b border-r border-slate-200 py-2 px-4 text-right text-red-600'
+      : 'border-b border-r border-slate-200 py-2 px-4 text-right';
+
+  const titleCell = (
+    <button
+      type="button"
+      onClick={toggleAll}
+      className="inline-flex items-center gap-1.5 text-white hover:text-yellow-300 transition-colors"
+      title={allCollapsed ? '전체 펼치기' : '전체 접기'}
+    >
+      현금흐름표
+      {allCollapsed
+        ? <ChevronRight className="h-4 w-4" strokeWidth={2.5} />
+        : <ChevronDown className="h-4 w-4" strokeWidth={2.5} />}
+    </button>
+  );
 
   return (
     <div>
-      <div className="flex items-center gap-2 mb-3">
-        <h2 className="text-lg font-bold text-gray-900">현금흐름표</h2>
-        <button
-          type="button"
-          onClick={toggleAll}
-          className="px-3 py-1.5 text-sm font-medium rounded-lg bg-gray-200 text-gray-700 hover:bg-gray-300"
-        >
-          {allCollapsed ? '펼치기 ▼' : '접기 ▲'}
-        </button>
-      </div>
-      <div className="overflow-auto" style={{ maxHeight: 'calc(100vh - 220px)' }}>
+      <div className="overflow-auto rounded-2xl border border-slate-200 shadow-sm" style={{ maxHeight: 'calc(100vh - 220px)' }}>
         <table className="w-full border-collapse text-sm">
           <thead className="sticky top-0 z-20 bg-navy text-white">
             {monthsCollapsed && hasPlanCols ? (
               <>
                 <tr>
-                  <th rowSpan={2} className="border border-gray-300 py-3 px-4 text-left sticky left-0 z-30 bg-navy min-w-[200px]">
-                    계정과목
+                  <th rowSpan={2} className="border border-gray-200 py-3 px-4 text-left sticky left-0 z-30 bg-navy min-w-[200px]">
+                    {titleCell}
                   </th>
-                  <th rowSpan={2} className="border border-gray-300 py-3 px-4 text-center min-w-[120px]">2025년(합계)</th>
-                  <th colSpan={2} className="border border-gray-300 py-3 px-4 text-center min-w-[120px] bg-gray-600">전월계획</th>
-                  <th colSpan={4} className="border border-gray-300 py-3 px-4 text-center min-w-[120px]">2026년(예상)</th>
+                  <th rowSpan={2} className="border border-gray-200 py-3 px-4 text-center min-w-[120px]">2025년(합계)</th>
+                  <th colSpan={2} className="border border-gray-200 py-3 px-4 text-center min-w-[120px] bg-slate-500">전월계획</th>
+                  <th colSpan={4} className="border border-gray-200 py-3 px-4 text-center min-w-[120px] bg-navy-light">2026년(예상)</th>
                 </tr>
                 <tr>
-                  <th className="border border-gray-300 py-2 px-4 text-center min-w-[110px] bg-gray-600">2026년계획(N-1)</th>
-                  <th className="border border-gray-300 py-2 px-4 text-center min-w-[110px] bg-gray-600">계획-전년</th>
-                  <th className="border border-gray-300 py-2 px-4 text-center min-w-[110px]">2026년합계</th>
-                  <th className="border border-gray-300 py-2 px-4 text-center min-w-[100px]">전년비</th>
-                  <th className="border border-gray-300 py-2 px-4 text-center min-w-[110px]">계획 대비</th>
-                  <th className="border border-gray-300 py-2 px-4 text-center min-w-[90px]">계획 대비%</th>
+                  <th className="border border-gray-200 py-2 px-4 text-center min-w-[110px] bg-slate-500">2026년계획(N-1)</th>
+                  <th className="border border-gray-200 py-2 px-4 text-center min-w-[110px] bg-slate-500">계획-전년</th>
+                  <th className="border border-gray-200 py-2 px-4 text-center min-w-[110px] bg-navy-light">2026년합계</th>
+                  <th className="border border-gray-200 py-2 px-4 text-center min-w-[100px] bg-navy-light">전년비</th>
+                  <th className="border border-gray-200 py-2 px-4 text-center min-w-[110px] bg-navy-light">계획 대비</th>
+                  <th className="border border-gray-200 py-2 px-4 text-center min-w-[90px] bg-navy-light">계획 대비%</th>
                 </tr>
               </>
             ) : (
               <tr>
-                <th className="border border-gray-300 py-3 px-4 text-left sticky left-0 z-30 bg-navy min-w-[200px]">
-                  계정과목
+                <th className="border border-gray-200 py-3 px-4 text-left sticky left-0 z-30 bg-navy min-w-[200px]">
+                  {titleCell}
                 </th>
                 {monthsCollapsed ? (
                   is2025Layout ? (
                     <>
-                      <th className="border border-gray-300 py-3 px-4 text-center min-w-[120px]">{columns[0]}</th>
-                      <th className="border border-gray-300 py-3 px-4 text-center min-w-[120px]">{columns[1]}</th>
-                      <th className="border border-gray-300 py-3 px-4 text-center min-w-[120px]">{columns[14]}</th>
-                      <th className="border border-gray-300 py-3 px-4 text-center min-w-[100px]">{columns[15]}</th>
+                      <th className="border border-gray-200 py-3 px-4 text-center min-w-[120px]">{columns[0]}</th>
+                      <th className="border border-gray-200 py-3 px-4 text-center min-w-[120px]">{columns[1]}</th>
+                      <th className="border border-gray-200 py-3 px-4 text-center min-w-[120px]">{columns[14]}</th>
+                      <th className="border border-gray-200 py-3 px-4 text-center min-w-[100px]">{columns[15]}</th>
                     </>
                   ) : (
                     <>
-                      <th className="border border-gray-300 py-3 px-4 text-center min-w-[120px]">{columns[0]}</th>
-                      <th className="border border-gray-300 py-3 px-4 text-center min-w-[120px]">{columns[13]}</th>
-                      <th className="border border-gray-300 py-3 px-4 text-center min-w-[100px]">{columns[14]}</th>
+                      <th className="border border-gray-200 py-3 px-4 text-center min-w-[120px]">{columns[0]}</th>
+                      <th className="border border-gray-200 py-3 px-4 text-center min-w-[120px]">{columns[13]}</th>
+                      <th className="border border-gray-200 py-3 px-4 text-center min-w-[100px]">{columns[14]}</th>
                     </>
                   )
                 ) : (
                   columns.map((col, i) => (
-                    <th key={i} className="border border-gray-300 py-3 px-4 text-center min-w-[100px]">
+                    <th key={i} className="border border-gray-200 py-3 px-4 text-center min-w-[100px]">
                       {col}
                     </th>
                   ))
@@ -176,25 +183,38 @@ export default function CashFlowHierarchyTable({
               const indentPx = row.level === 0 ? 12 : row.level === 1 ? 36 : 60;
               const label = row.account;
 
+              // 대분류 행 배경색: 계정별로 분기
+              const majorBg =
+                row.account === '영업활동' ? 'bg-highlight-sky'
+                : row.account === '자산성지출' ? 'bg-highlight-pink'
+                : row.account === '차입금' ? 'bg-highlight-mint'
+                : row.account === '기타수익' ? 'bg-highlight-yellow'
+                : 'bg-sky-100';
+
+              const rowBg = isNetCash
+                ? 'bg-gray-100'
+                : isMajor
+                  ? `${majorBg} font-semibold`
+                  : isMedium
+                    ? 'bg-gray-50'
+                    : '';
+              const cellBg = isNetCash
+                ? 'bg-gray-100'
+                : isMajor
+                  ? majorBg
+                  : isMedium
+                    ? 'bg-gray-50'
+                    : 'bg-white';
+
               // values: [2025합계, 1~12월, 2026합계, YoY] -> indices 0, 13, 14 when collapsed
 
               return (
                 <tr
                   key={ri}
-                  className={
-                    isNetCash
-                      ? 'bg-gray-100'
-                      : isMajor
-                          ? 'bg-sky-100 font-semibold'
-                          : isMedium
-                            ? 'bg-gray-50'
-                            : ''
-                  }
+                  className={rowBg}
                 >
                   <td
-                    className={`border border-gray-300 py-2 px-4 sticky left-0 z-10 ${
-                      isNetCash ? 'bg-gray-100' : isMajor ? 'bg-sky-100' : isMedium ? 'bg-gray-50' : 'bg-white'
-                    }`}
+                    className={`border-b border-r border-slate-200 py-2 px-4 sticky left-0 z-10 ${cellBg}`}
                     style={{ paddingLeft: `${indentPx}px` }}
                   >
                     {row.isGroup ? (
@@ -203,9 +223,11 @@ export default function CashFlowHierarchyTable({
                         <button
                           type="button"
                           onClick={() => toggle(row.account)}
-                          className="text-gray-600 hover:text-gray-900 p-0.5 leading-none"
+                          className="inline-flex items-center text-slate-400 hover:text-slate-700 p-0.5 leading-none"
                         >
-                          {collapsed.has(row.account) ? '▶' : '▼'}
+                          {collapsed.has(row.account)
+                            ? <ChevronRight className="h-3.5 w-3.5" strokeWidth={2.5} />
+                            : <ChevronDown className="h-3.5 w-3.5" strokeWidth={2.5} />}
                         </button>
                       </div>
                     ) : (

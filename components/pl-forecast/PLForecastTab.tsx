@@ -1,7 +1,9 @@
 'use client';
 
 import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
+import { ChevronDown, ChevronUp, ChevronRight, ChevronLeft } from 'lucide-react';
 import { formatNumber } from '@/lib/utils';
+import BrandTabs from '@/components/BrandTabs';
 import type { CFHierarchyApiRow } from '@/app/api/fs/cf-hierarchy/route';
 import {
   ANNUAL_2025_RAW_BY_BRAND,
@@ -3572,104 +3574,93 @@ export default function PLForecastTab({ scenarioOverride = null }: PLForecastTab
       <div className="sticky top-0 z-[60] border-b border-slate-200/80 bg-white/95 shadow-sm backdrop-blur-md">
         <div className="px-6 py-3">
           <div className="flex flex-wrap items-center gap-3">
-            <div className="mr-2 whitespace-nowrap text-sm font-semibold tracking-tight text-slate-800">
-              PL Forecast (FY26)
-            </div>
-            <div className="inline-flex rounded-xl border border-slate-300/80 bg-slate-200/70 p-1 shadow-inner">
-              {FORECAST_BRANDS.map((brand) => {
-                const selected = activeBrand === brand.id;
+            <button
+              type="button"
+              onClick={() => void openScenarioModal()}
+              className="inline-flex items-center gap-1.5 rounded-lg border border-violet-300 bg-violet-50 px-4 py-2 text-sm font-semibold text-violet-700 shadow-sm transition-colors hover:bg-violet-100"
+            >
+              ⚖ 시나리오 비교
+            </button>
+
+            <div className="h-6 w-px bg-slate-300" />
+
+            <BrandTabs brands={FORECAST_BRANDS} activeBrand={activeBrand} onChange={setActiveBrand} />
+
+            <div className="h-6 w-px bg-slate-300" />
+
+            {/* 월/분기 뷰 토글 — BrandTabs와 동일한 세그먼트 컨트롤 스타일 */}
+            <div className="inline-flex items-center gap-1 rounded-lg bg-slate-100 p-1">
+              {(['월', '분기'] as const).map((m) => {
+                const isActive = viewMode === m;
                 return (
                   <button
-                    key={brand.id ?? 'corp'}
+                    key={m}
                     type="button"
-                    onClick={() => setActiveBrand(brand.id)}
-                    className={`rounded-lg px-4 py-2 text-sm font-semibold transition-all ${
-                      selected
-                        ? 'bg-gradient-to-b from-[#4a6694] to-[#3a5583] text-white shadow-[0_2px_8px_rgba(58,85,131,0.35)]'
-                        : 'text-slate-600 hover:bg-white/90 hover:text-slate-800'
+                    onClick={() => setViewMode(m)}
+                    className={`rounded-md px-3.5 py-1.5 text-sm font-semibold transition-all ${
+                      isActive
+                        ? 'bg-white text-slate-900 shadow-sm ring-1 ring-slate-200/60'
+                        : 'text-slate-500 hover:text-slate-800'
                     }`}
                   >
-                    {brand.label}
+                    {m}
                   </button>
                 );
               })}
             </div>
 
-            <div className="h-6 w-px bg-slate-300" />
-
-            {/* 월/분기 뷰 토글 */}
-            <div className="flex items-center gap-0 rounded-lg border border-slate-300 bg-white p-0.5 shadow-sm">
-              {(['월', '분기'] as const).map((m) => (
-                <button
-                  key={m}
-                  type="button"
-                  onClick={() => setViewMode(m)}
-                  className={`rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
-                    viewMode === m ? 'bg-slate-700 text-white shadow-sm' : 'text-slate-600 hover:bg-slate-100'
-                  }`}
-                >
-                  {m}
-                </button>
-              ))}
-            </div>
-
-            <div className="h-6 w-px bg-slate-300" />
-
-            <button
-              type="button"
-              onClick={() => {
-                const groups = rowDefs.filter((r) => r.isGroup).map((r) => r.account);
-                if (hasAnyExpanded) {
-                  setCollapsed(new Set(groups));
-                } else {
-                  setCollapsed(new Set());
-                }
-              }}
-              className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 shadow-sm transition-colors hover:bg-slate-50"
-            >
-              {hasAnyExpanded ? '전체 접기' : '전체 펼치기'}
-            </button>
-
-            {latestActualMonth > 0 && (
-              <div className="rounded-full border border-blue-200 bg-blue-50 px-3 py-1 text-xs text-blue-700 shadow-sm">
-                실적 1~{latestActualMonth}월 반영
-              </div>
-            )}
-
-            <div
-              className={`flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs shadow-sm ${
-                isLoadingAny
-                  ? 'border-amber-300 bg-amber-50 text-amber-700'
-                  : hasAnyLoadError
-                    ? 'border-red-200 bg-red-50 text-red-600'
-                    : 'border-emerald-200 bg-emerald-50 text-emerald-700'
-              }`}
-            >
-              {isLoadingAny ? (
-                <>
-                  <span className="font-mono tracking-tight">
-                    {'█'.repeat(doneLoadCount)}{'░'.repeat(totalLoadCount - doneLoadCount)}
-                  </span>
-                  <span>{doneLoadCount}/{totalLoadCount}</span>
-                </>
-              ) : hasAnyLoadError ? '오류' : 'PL 계산완료'}
-            </div>
-
-            <span className="font-bold text-red-600" style={{ fontSize: '20px' }}>
+            <span className="text-xs font-semibold text-red-600">
               ※ 필수 방문순서: 재고자산(sim) 방문후 PL 참고해주세요
             </span>
 
-            <div className="ml-auto flex items-center gap-2">
+            {/* 우측 정렬 영역: 전체 접기 / 실적 반영 / PL 계산완료 / 단위 */}
+            <div className="ml-auto flex flex-wrap items-center gap-2">
               <button
                 type="button"
-                onClick={() => void openScenarioModal()}
-                className="flex items-center gap-1.5 rounded-full border border-violet-300 bg-violet-50 px-4 py-1.5 text-xs font-semibold text-violet-700 shadow-sm transition-colors hover:bg-violet-100"
+                onClick={() => {
+                  const groups = rowDefs.filter((r) => r.isGroup).map((r) => r.account);
+                  if (hasAnyExpanded) {
+                    setCollapsed(new Set(groups));
+                  } else {
+                    setCollapsed(new Set());
+                  }
+                }}
+                className="inline-flex items-center gap-1.5 rounded-md border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-600 transition-colors hover:border-slate-300 hover:bg-slate-50"
               >
-                ⚖ 시나리오 비교
+                {hasAnyExpanded ? '전체 접기' : '전체 펼치기'}
+                {hasAnyExpanded
+                  ? <ChevronUp className="h-3.5 w-3.5 text-slate-400" />
+                  : <ChevronDown className="h-3.5 w-3.5 text-slate-400" />}
               </button>
-            </div>
-            <div className="rounded-full border border-slate-200 bg-white px-3 py-1 text-xs text-slate-500 shadow-sm">
-              단위: CNY K
+
+              {latestActualMonth > 0 && (
+                <div className="inline-flex items-center rounded-full border border-blue-200 bg-blue-50 px-3 py-1.5 text-xs font-medium text-blue-700">
+                  실적 1~{latestActualMonth}월 반영
+                </div>
+              )}
+
+              <div
+                className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-medium ${
+                  isLoadingAny
+                    ? 'border-amber-300 bg-amber-50 text-amber-700'
+                    : hasAnyLoadError
+                      ? 'border-red-200 bg-red-50 text-red-600'
+                      : 'border-emerald-200 bg-emerald-50 text-emerald-700'
+                }`}
+              >
+                {isLoadingAny ? (
+                  <>
+                    <span className="font-mono tracking-tight">
+                      {'█'.repeat(doneLoadCount)}{'░'.repeat(totalLoadCount - doneLoadCount)}
+                    </span>
+                    <span>{doneLoadCount}/{totalLoadCount}</span>
+                  </>
+                ) : hasAnyLoadError ? '오류' : 'PL 계산완료'}
+              </div>
+
+              <div className="inline-flex items-center rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-500">
+                단위: CNY K
+              </div>
             </div>
           </div>
         </div>
@@ -3683,24 +3674,24 @@ export default function PLForecastTab({ scenarioOverride = null }: PLForecastTab
           <table className="w-full border-separate border-spacing-0 text-sm">
             <thead className="sticky top-0 z-20">
               <tr>
-                <th className="sticky left-0 z-30 min-w-[260px] border-b border-r border-slate-300 bg-gradient-to-r from-[#2f4f7f] to-[#3b5f93] px-4 py-3 text-center font-semibold text-white">
-                  계정과목
+                <th className="sticky left-0 z-30 min-w-[260px] border-b border-r border-slate-200 bg-navy px-4 py-3 text-center font-semibold text-white">
+                  PL Forecast (FY26)
                 </th>
-                <th className="min-w-[130px] border-b border-r border-slate-300 bg-gradient-to-r from-[#3b5f93] to-[#4b6fa3] px-3 py-3 text-center font-semibold text-slate-50">
+                <th className="min-w-[130px] border-b border-r border-slate-200 bg-navy px-3 py-3 text-center font-semibold text-white">
                   25년(연간)
                 </th>
                 {(viewMode === '분기' ? QUARTER_HEADERS : MONTH_HEADERS).map((label) => (
                   <th
                     key={label}
-                    className={`${viewMode === '분기' ? 'min-w-[130px]' : 'min-w-[105px]'} border-b border-r border-slate-300 bg-gradient-to-r from-[#2f4f7f] to-[#3b5f93] px-3 py-3 text-center font-semibold text-slate-50`}
+                    className={`${viewMode === '분기' ? 'min-w-[130px]' : 'min-w-[105px]'} border-b border-r border-slate-200 bg-navy px-3 py-3 text-center font-semibold text-white`}
                   >
                     {label}
                   </th>
                 ))}
-                <th className="min-w-[130px] border-b border-r border-slate-300 bg-gradient-to-r from-[#3b5f93] to-[#4b6fa3] px-3 py-3 text-center font-semibold text-slate-50">
+                <th className="min-w-[130px] border-b border-r border-slate-200 bg-navy px-3 py-3 text-center font-semibold text-white">
                   26년(연간)
                 </th>
-                <th className="min-w-[100px] border-b border-r border-slate-300 bg-gradient-to-r from-[#4b6fa3] to-[#5c80b1] px-3 py-3 text-center font-semibold text-slate-50">
+                <th className="min-w-[100px] border-b border-r border-slate-200 bg-navy px-3 py-3 text-center font-semibold text-white">
                   YoY
                 </th>
                 {viewMode !== '분기' && (
@@ -3723,26 +3714,36 @@ export default function PLForecastTab({ scenarioOverride = null }: PLForecastTab
                     : formatYoYByAnnual(annual26, series.annual2025);
                 const isGroupCollapsed = row.isGroup && collapsed.has(row.account);
                 const accountLabel = ACCOUNT_LABEL_OVERRIDES[row.account] ?? row.account;
-                const isProfitFocusRow = ['매출총이익', '영업이익(관리식)', '영업이익률(관리식)'].includes(row.account);
-                const isMintRow = ['매출(IFRS)', '영업이익(IFRS)', '영업이익률(IFRS)'].includes(row.account);
-                const isAdjustGroupRow = row.account === '재무&관리차이(-)';
+                const isSkyRow = ['Tag매출', '실판매출(V+)'].includes(row.account);
+                const isMintRow = ['매출총이익', '영업이익(관리식)'].includes(row.account);
+                const isWhiteRateRow = row.account === '영업이익률(관리식)';
+                const isOrangeRow = row.account === '재무&관리차이(-)';
+                const isYellowRow = ['매출(IFRS)', '영업이익(IFRS)', '영업이익률(IFRS)'].includes(row.account);
+                const hasThickDivider = ['매출총이익', '영업이익(관리식)'].includes(row.account);
                 const rowTone =
                   isYoyRow
                     ? 'italic text-slate-400'
-                    : isMintRow
-                      ? 'bg-emerald-100'
-                      : isAdjustGroupRow
-                        ? 'bg-highlight-gray'
-                        : isProfitFocusRow
-                          ? 'bg-sky-100'
-                          : row.level === 0
-                            ? (row.isBold ? 'bg-slate-50' : 'bg-white')
-                            : row.level === 1
+                    : isYellowRow
+                      ? 'bg-highlight-yellow'
+                      : isOrangeRow
+                        ? 'bg-highlight-orange'
+                        : isMintRow
+                          ? 'bg-highlight-mint'
+                          : isSkyRow
+                            ? 'bg-highlight-sky'
+                            : isWhiteRateRow
                               ? 'bg-white'
-                              : 'bg-slate-50/40';
+                              : row.level === 0
+                                ? (row.isBold ? 'bg-slate-50' : 'bg-white')
+                                : row.level === 1
+                                  ? 'bg-white'
+                                  : 'bg-slate-50/40';
 
                 return (
-                  <tr key={row.account} className={`${rowTone} transition-colors hover:bg-sky-50/50`}>
+                  <tr
+                    key={row.account}
+                    className={`${rowTone} ${hasThickDivider ? '[&>td]:!border-b-[3px] [&>td]:!border-b-slate-400' : ''} ${isOrangeRow ? '[&>td]:!text-orange-700' : ''} transition-colors hover:bg-sky-50/50`}
+                  >
                     <td className="sticky left-0 z-10 border-b border-r border-slate-200 px-4 py-2.5" style={{ paddingLeft: `${16 + row.level * 18}px` }}>
                       <div className="flex items-center gap-2">
                         <span className={isYoyRow ? 'text-slate-400' : row.isBold ? 'font-semibold text-slate-800' : 'text-slate-700'}>{accountLabel}</span>
@@ -3757,9 +3758,11 @@ export default function PLForecastTab({ scenarioOverride = null }: PLForecastTab
                                 return next;
                               });
                             }}
-                            className="inline-flex h-5 w-5 items-center justify-center rounded border border-slate-300 bg-white text-[11px] text-slate-500"
+                            className="inline-flex items-center text-slate-400 hover:text-slate-700 leading-none"
                           >
-                            {isGroupCollapsed ? '+' : '-'}
+                            {isGroupCollapsed
+                              ? <ChevronRight className="h-3.5 w-3.5" strokeWidth={2.5} />
+                              : <ChevronDown className="h-3.5 w-3.5" strokeWidth={2.5} />}
                           </button>
                         ) : (
                           <span className="inline-flex h-5 w-5" />
@@ -3782,12 +3785,12 @@ export default function PLForecastTab({ scenarioOverride = null }: PLForecastTab
                             {renderMonthInput(row, monthIndex)}
                           </td>
                         ))}
-                    <td className={`border-b border-r border-slate-200 px-3 py-2.5 text-right font-medium ${isYoyRow ? 'text-slate-400' : 'text-slate-800'} ${isYoyRow ? '' : isMintRow ? 'bg-emerald-100' : isAdjustGroupRow ? 'bg-highlight-gray' : isProfitFocusRow ? 'bg-sky-100' : 'bg-slate-50'}`}>
+                    <td className={`border-b border-r border-slate-200 px-3 py-2.5 text-right font-medium ${isYoyRow ? 'text-slate-400' : 'text-slate-800'} ${isYoyRow ? '' : isYellowRow ? 'bg-highlight-yellow' : isOrangeRow ? 'bg-highlight-orange' : isMintRow ? 'bg-highlight-mint' : isSkyRow ? 'bg-highlight-sky' : isWhiteRateRow ? 'bg-white' : 'bg-slate-50'}`}>
                       {formatValue(annual26, row.format, isYoyRow ? 0 : 1)}
                     </td>
-                    <td className={`border-b border-r border-slate-200 px-3 py-2.5 text-right ${isYoyRow ? 'text-slate-400' : 'text-slate-500'} ${isYoyRow ? '' : isMintRow ? 'bg-emerald-100' : isAdjustGroupRow ? 'bg-highlight-gray' : isProfitFocusRow ? 'bg-sky-100' : 'bg-slate-50'}`}>{yoyText}</td>
+                    <td className={`border-b border-r border-slate-200 px-3 py-2.5 text-right ${isYoyRow ? 'text-slate-400' : 'text-slate-500'} ${isYoyRow ? '' : isYellowRow ? 'bg-highlight-yellow' : isOrangeRow ? 'bg-highlight-orange' : isMintRow ? 'bg-highlight-mint' : isSkyRow ? 'bg-highlight-sky' : isWhiteRateRow ? 'bg-white' : 'bg-slate-50'}`}>{yoyText}</td>
                     {viewMode !== '분기' && (
-                    <td className={`border-b border-slate-200 px-3 py-2.5 text-right font-medium ${isYoyRow ? 'text-slate-400' : 'text-slate-800'} ${isYoyRow ? '' : isMintRow ? 'bg-emerald-100' : isAdjustGroupRow ? 'bg-highlight-gray' : isProfitFocusRow ? 'bg-sky-100' : 'bg-slate-50'}`}>
+                    <td className={`border-b border-slate-200 px-3 py-2.5 text-right font-medium ${isYoyRow ? 'text-slate-400' : 'text-slate-800'} ${isYoyRow ? '' : isYellowRow ? 'bg-highlight-yellow' : isOrangeRow ? 'bg-highlight-orange' : isMintRow ? 'bg-highlight-mint' : isSkyRow ? 'bg-highlight-sky' : isWhiteRateRow ? 'bg-white' : 'bg-slate-50'}`}>
                       {(() => {
                         if (latestActualMonth <= 0) return '';
                         if (isYoyRow) {
@@ -3974,29 +3977,25 @@ export default function PLForecastTab({ scenarioOverride = null }: PLForecastTab
           ];
           return (
             <div className="mt-6 overflow-hidden rounded-2xl border border-slate-200 bg-white/95 shadow-sm">
-              <div className="flex items-center gap-3 border-b border-slate-200 bg-slate-50 px-4 py-2.5">
-                <span className="inline-flex items-center rounded-md bg-[#2f4f7f] px-2 py-0.5 text-xs font-semibold text-white">대리상 출고표</span>
-                <span className="text-xs text-slate-600">{brandLabel} · 26년 월별 vs 25년 동일시즌(25F/25S/ACC) YoY · 단위 K (천위안)</span>
-              </div>
               <div className="overflow-auto">
                 <table className="w-full border-separate border-spacing-0 text-sm">
                   <thead>
                     <tr>
-                      <th className="sticky left-0 z-10 min-w-[260px] border-b border-r border-slate-300 bg-slate-800 px-3 py-2 text-center font-semibold text-slate-100">구분</th>
-                      <th className="min-w-[130px] border-b border-r border-slate-300 bg-slate-700 px-3 py-2 text-center font-semibold text-slate-100">전년 연간</th>
+                      <th className="sticky left-0 z-10 min-w-[260px] border-b border-r border-slate-200 bg-navy px-3 py-2 text-center font-semibold text-white">대리상 출고표</th>
+                      <th className="min-w-[130px] border-b border-r border-slate-200 bg-navy px-3 py-2 text-center font-semibold text-white">전년 연간</th>
                       {(viewMode === '분기' ? QUARTER_HEADERS : MONTH_HEADERS).map((label, idx) => {
                         const isForecast = viewMode === '분기'
                           ? (idx + 1) * 3 > latestActualMonth
                           : idx >= latestActualMonth;
                         return (
-                          <th key={`dealer-ship-h-${label}`} className={`${viewMode === '분기' ? 'min-w-[130px]' : 'min-w-[105px]'} border-b border-r border-slate-300 bg-slate-800 px-3 py-2 text-center font-semibold text-slate-100`}>
+                          <th key={`dealer-ship-h-${label}`} className={`${viewMode === '분기' ? 'min-w-[130px]' : 'min-w-[105px]'} border-b border-r border-slate-200 bg-navy px-3 py-2 text-center font-semibold text-white`}>
                             {label}{isForecast ? ' (F)' : ''}
                           </th>
                         );
                       })}
-                      <th className="min-w-[130px] border-b border-r border-slate-300 bg-slate-700 px-3 py-2 text-center font-semibold text-slate-100">연간</th>
+                      <th className="min-w-[130px] border-b border-r border-slate-200 bg-navy px-3 py-2 text-center font-semibold text-white">연간</th>
                       {viewMode !== '분기' && (
-                        <th className="min-w-[120px] border-b border-slate-300 bg-slate-700 px-3 py-2 text-center font-semibold text-slate-100">
+                        <th className="min-w-[120px] border-b border-slate-200 bg-navy px-3 py-2 text-center font-semibold text-white">
                           {latestActualMonth > 0 ? `YTD(1~${latestActualMonth}월)` : 'YTD'}
                         </th>
                       )}
@@ -4004,11 +4003,20 @@ export default function PLForecastTab({ scenarioOverride = null }: PLForecastTab
                   </thead>
                   <tbody>
                     {rowDefs.map((r) => {
+                      // 페어별 배경색 매핑 (당년X + YoY(X) 동일 색)
+                      const groupBg =
+                        r.label === '당년F' || r.label === 'YoY (F)' ? 'bg-highlight-sky'
+                        : r.label === '당년S' || r.label === 'YoY (S)' ? 'bg-white'
+                        : r.label === 'ACC' || r.label === 'YoY (ACC)' ? 'bg-highlight-sky'
+                        : r.label === '1년차' || r.label === 'YoY (1년차)' ? 'bg-white'
+                        : r.label === '차기시즌' || r.label === 'YoY (차기시즌)' ? 'bg-highlight-sky'
+                        : 'bg-highlight-yellow'; // 합계, YoY (합계)
+                      // 당년X 행과 YoY(X) 행을 한 세트로 그룹화: 데이터 행(YoY 아닌 행)의 하단 보더 제거
                       const rowCls = r.isYoy
-                        ? 'italic'
+                        ? `${groupBg} italic`
                         : r.isTotal
-                          ? 'bg-slate-100 font-semibold'
-                          : 'bg-sky-50';
+                          ? `${groupBg} font-semibold [&>td]:!border-b-0`
+                          : `${groupBg} [&>td]:!border-b-0`;
                       const sumRange = (arr: (number | null)[], start: number, end: number): number | null => {
                         let s = 0; let any = false;
                         for (let i = start; i < end; i += 1) {
@@ -4022,7 +4030,7 @@ export default function PLForecastTab({ scenarioOverride = null }: PLForecastTab
                           <td className="sticky left-0 z-10 border-b border-r border-slate-200 bg-inherit px-3 py-2 text-slate-800" style={r.isYoy ? { paddingLeft: 28 } : undefined}>
                             {r.label}
                           </td>
-                          <td className="border-b border-r border-slate-200 bg-slate-50 px-3 py-2 text-right font-medium">
+                          <td className="border-b border-r border-slate-200 bg-inherit px-3 py-2 text-right font-medium">
                             {r.isYoy ? '' : formatKRow(sumArr(r.denom))}
                           </td>
                           {viewMode === '분기'
@@ -4044,13 +4052,13 @@ export default function PLForecastTab({ scenarioOverride = null }: PLForecastTab
                                     : formatKRow(r.num[mi])}
                                 </td>
                               ))}
-                          <td className="border-b border-r border-slate-200 bg-slate-50 px-3 py-2 text-right font-medium">
+                          <td className="border-b border-r border-slate-200 bg-inherit px-3 py-2 text-right font-medium">
                             {r.isYoy
                               ? formatPctRow(yoy(sumArr(r.num), sumArr(r.denom)))
                               : formatKRow(sumArr(r.num))}
                           </td>
                           {viewMode !== '분기' && (
-                            <td className="border-b border-slate-200 bg-slate-50 px-3 py-2 text-right font-medium">
+                            <td className="border-b border-slate-200 bg-inherit px-3 py-2 text-right font-medium">
                               {latestActualMonth <= 0
                                 ? ''
                                 : r.isYoy
@@ -4078,7 +4086,12 @@ export default function PLForecastTab({ scenarioOverride = null }: PLForecastTab
               PL
             </span>
             <span className="flex-1 font-semibold text-slate-700">PL 계산 로직</span>
-            <span className="text-slate-500">{logicGuideCollapsed ? '펼치기' : '접기'}</span>
+            <span className="inline-flex items-center gap-1 text-xs text-slate-500">
+              {logicGuideCollapsed ? '펼치기' : '접기'}
+              {logicGuideCollapsed
+                ? <ChevronDown className="h-3.5 w-3.5 text-slate-400" />
+                : <ChevronUp className="h-3.5 w-3.5 text-slate-400" />}
+            </span>
           </button>
           {!logicGuideCollapsed && (
             <div className="mt-3 grid grid-cols-3 gap-3" style={{ gridTemplateRows: 'auto auto' }}>
@@ -4219,9 +4232,12 @@ export default function PLForecastTab({ scenarioOverride = null }: PLForecastTab
             <button
               type="button"
               onClick={() => setTagSales2025SectionOpen((prev) => !prev)}
-              className="text-xs text-slate-500"
+              className="inline-flex items-center gap-1 text-xs text-slate-500"
             >
               {tagSales2025SectionOpen ? '접기' : '펼치기'}
+              {tagSales2025SectionOpen
+                ? <ChevronUp className="h-3.5 w-3.5 text-slate-400" />
+                : <ChevronDown className="h-3.5 w-3.5 text-slate-400" />}
             </button>
           </div>
 
@@ -4300,9 +4316,11 @@ export default function PLForecastTab({ scenarioOverride = null }: PLForecastTab
                                         if (next.has(brand)) next.delete(brand); else next.add(brand);
                                         return next;
                                       })}
-                                      className="inline-flex h-5 w-5 items-center justify-center rounded border border-slate-300 bg-white text-[11px] text-slate-500"
+                                      className="inline-flex items-center text-slate-400 hover:text-slate-700 leading-none"
                                     >
-                                      {brandCollapsed ? '+' : '-'}
+                                      {brandCollapsed
+                                        ? <ChevronRight className="h-3.5 w-3.5" strokeWidth={2.5} />
+                                        : <ChevronDown className="h-3.5 w-3.5" strokeWidth={2.5} />}
                                     </button>
                                   </div>
                                 </td>
@@ -4360,9 +4378,11 @@ export default function PLForecastTab({ scenarioOverride = null }: PLForecastTab
                                           if (next.has(brand)) next.delete(brand); else next.add(brand);
                                           return next;
                                         })}
-                                        className="inline-flex h-5 w-5 items-center justify-center rounded border border-slate-300 bg-white text-[11px] text-slate-500"
+                                        className="inline-flex items-center text-slate-400 hover:text-slate-700 leading-none"
                                       >
-                                        {clothCollapsed ? '+' : '-'}
+                                        {clothCollapsed
+                                          ? <ChevronRight className="h-3.5 w-3.5" strokeWidth={2.5} />
+                                          : <ChevronDown className="h-3.5 w-3.5" strokeWidth={2.5} />}
                                       </button>
                                     </div>
                                   </td>
@@ -4430,7 +4450,12 @@ export default function PLForecastTab({ scenarioOverride = null }: PLForecastTab
                 <div>ACC: 실적 Snowflake(대리상(ACC)) · 계획 = 잔여 × ACC출고비율 배분</div>
               </div>
             </div>
-            <span className="text-xs text-slate-500">{salesSectionOpen ? '접기' : '펼치기'}</span>
+            <span className="inline-flex items-center gap-1 text-xs text-slate-500">
+              {salesSectionOpen ? '접기' : '펼치기'}
+              {salesSectionOpen
+                ? <ChevronUp className="h-3.5 w-3.5 text-slate-400" />
+                : <ChevronDown className="h-3.5 w-3.5 text-slate-400" />}
+            </span>
           </button>
 
           {salesSectionOpen && (
@@ -4492,9 +4517,11 @@ export default function PLForecastTab({ scenarioOverride = null }: PLForecastTab
                                       return next;
                                     });
                                   }}
-                                  className="inline-flex h-5 w-5 items-center justify-center rounded border border-slate-300 bg-white text-[11px] text-slate-500"
+                                  className="inline-flex items-center text-slate-400 hover:text-slate-700 leading-none"
                                 >
-                                  {isCollapsed ? '+' : '-'}
+                                  {isCollapsed
+                                    ? <ChevronRight className="h-3.5 w-3.5" strokeWidth={2.5} />
+                                    : <ChevronDown className="h-3.5 w-3.5" strokeWidth={2.5} />}
                                 </button>
                               ) : (
                                 <span className="inline-flex h-5 w-5" />
@@ -4696,7 +4723,12 @@ export default function PLForecastTab({ scenarioOverride = null }: PLForecastTab
                     ? `실적월 ${latestActualMonth}월 기준`
                     : '실적 파일 없음'}
             </div>
-            <span className="text-xs text-slate-500">{directExpenseRatioSectionOpen ? '접기' : '펼치기'}</span>
+            <span className="inline-flex items-center gap-1 text-xs text-slate-500">
+              {directExpenseRatioSectionOpen ? '접기' : '펼치기'}
+              {directExpenseRatioSectionOpen
+                ? <ChevronUp className="h-3.5 w-3.5 text-slate-400" />
+                : <ChevronDown className="h-3.5 w-3.5 text-slate-400" />}
+            </span>
           </button>
 
           {directExpenseRatioSectionOpen && (
@@ -4800,7 +4832,12 @@ export default function PLForecastTab({ scenarioOverride = null }: PLForecastTab
                     ? `실적월 ${latestActualMonth}월 기준`
                     : '실적 파일 없음'}
             </div>
-            <span className="text-xs text-slate-500">{tagCostRatioSectionOpen ? '접기' : '펼치기'}</span>
+            <span className="inline-flex items-center gap-1 text-xs text-slate-500">
+              {tagCostRatioSectionOpen ? '접기' : '펼치기'}
+              {tagCostRatioSectionOpen
+                ? <ChevronUp className="h-3.5 w-3.5 text-slate-400" />
+                : <ChevronDown className="h-3.5 w-3.5 text-slate-400" />}
+            </span>
           </button>
 
           {tagCostRatioSectionOpen && (
@@ -4882,7 +4919,12 @@ export default function PLForecastTab({ scenarioOverride = null }: PLForecastTab
                     ? `실적월 ${latestActualMonth}월 기준`
                     : '실적 파일 없음'}
             </div>
-            <span className="text-xs text-slate-500">{prevYearDiscountSectionOpen ? '접기' : '펼치기'}</span>
+            <span className="inline-flex items-center gap-1 text-xs text-slate-500">
+              {prevYearDiscountSectionOpen ? '접기' : '펼치기'}
+              {prevYearDiscountSectionOpen
+                ? <ChevronUp className="h-3.5 w-3.5 text-slate-400" />
+                : <ChevronDown className="h-3.5 w-3.5 text-slate-400" />}
+            </span>
           </button>
 
           {prevYearDiscountSectionOpen && (
@@ -4975,7 +5017,12 @@ export default function PLForecastTab({ scenarioOverride = null }: PLForecastTab
                     ? `실적월 ${latestActualMonth}월 기준`
                     : '실적 파일 없음'}
             </div>
-            <span className="text-xs text-slate-500">{valuationLossSectionOpen ? '접기' : '펼치기'}</span>
+            <span className="inline-flex items-center gap-1 text-xs text-slate-500">
+              {valuationLossSectionOpen ? '접기' : '펼치기'}
+              {valuationLossSectionOpen
+                ? <ChevronUp className="h-3.5 w-3.5 text-slate-400" />
+                : <ChevronDown className="h-3.5 w-3.5 text-slate-400" />}
+            </span>
           </button>
 
           {valuationLossSectionOpen && (
@@ -5051,7 +5098,12 @@ export default function PLForecastTab({ scenarioOverride = null }: PLForecastTab
             <div className="text-xs text-slate-500">
               {retailActualLoading ? '불러오는 중...' : retailActualError ? '오류' : '2025년 기준'}
             </div>
-            <span className="text-xs text-slate-500">{retailActualSectionOpen ? '접기' : '펼치기'}</span>
+            <span className="inline-flex items-center gap-1 text-xs text-slate-500">
+              {retailActualSectionOpen ? '접기' : '펼치기'}
+              {retailActualSectionOpen
+                ? <ChevronUp className="h-3.5 w-3.5 text-slate-400" />
+                : <ChevronDown className="h-3.5 w-3.5 text-slate-400" />}
+            </span>
           </button>
 
           {retailActualSectionOpen && (
@@ -5644,7 +5696,11 @@ export default function PLForecastTab({ scenarioOverride = null }: PLForecastTab
                                         onClick={() => setWcInvBrandOpen((v) => !v)}
                                       >
                                         <span>{row.label}</span>
-                                        <span className="text-[10px] font-normal text-slate-400">{wcInvBrandOpen ? '▼ 접기' : '▶ 상세'}</span>
+                                        <span className="inline-flex items-center gap-0.5 text-[10px] font-normal text-slate-400">
+                                          {wcInvBrandOpen
+                                            ? <><ChevronDown className="h-3 w-3" /> 접기</>
+                                            : <><ChevronRight className="h-3 w-3" /> 상세</>}
+                                        </span>
                                       </button>
                                     ) : row.label}
                                   </td>
@@ -5769,9 +5825,12 @@ export default function PLForecastTab({ scenarioOverride = null }: PLForecastTab
                                           setScenarioCfAllCollapsed(true);
                                         }
                                       }}
-                                      className="shrink-0 rounded-md border border-white/35 bg-white/10 px-2 py-0.5 text-[10px] font-medium text-white shadow-sm hover:bg-white/20"
+                                      className="shrink-0 inline-flex items-center gap-1 rounded-md border border-white/35 bg-white/10 px-2 py-0.5 text-[10px] font-medium text-white shadow-sm hover:bg-white/20"
                                     >
-                                      {scenarioCfAllCollapsed ? '펼치기 ▼' : '접기 ▲'}
+                                      {scenarioCfAllCollapsed ? '펼치기' : '접기'}
+                                      {scenarioCfAllCollapsed
+                                        ? <ChevronDown className="h-3 w-3" />
+                                        : <ChevronUp className="h-3 w-3" />}
                                     </button>
                                   </div>
                                 </th>

@@ -1,7 +1,9 @@
 'use client';
 
 import { useState, useEffect, useMemo } from 'react';
+import { ChevronDown, ChevronUp, ChevronLeft, ChevronRight, Eye, EyeOff } from 'lucide-react';
 import Tabs from '@/components/Tabs';
+import Header from '@/components/Header';
 import YearTabs from '@/components/YearTabs';
 import BrandTabs from '@/components/BrandTabs';
 import BaseMonthSelector from '@/components/BaseMonthSelector';
@@ -33,6 +35,8 @@ export default function Home() {
   const [cfMonthsCollapsed, setCfMonthsCollapsed] = useState<boolean>(true); // 현금흐름표 월별 접기 (2025년 기준달 미정)
   // 브랜드별 손익 비교컬럼 표시 여부 (법인 상단용)
   const [hideYtd, setHideYtd] = useState<boolean>(true); // YTD 숨기기 (기준월 12월일 때 기본값 숨김)
+  const [plMonthsCollapsed, setPlMonthsCollapsed] = useState<boolean>(true); // PL 월별 데이터 접기
+  const [plAllRowsCollapsed, setPlAllRowsCollapsed] = useState<boolean>(true); // PL 모든 행 접기
   const [summaryData, setSummaryData] = useState<ExecutiveSummaryData | null>(null);
   const [plData, setPlData] = useState<TableRow[] | null>(null);
   const [bsData, setBsData] = useState<TableRow[] | null>(null);
@@ -578,11 +582,12 @@ export default function Home() {
 
   return (
     <main className="min-h-screen bg-gray-50">
-      {/* ?곷떒 ??*/}
+      {/* 상단 헤더 + 탭 (모두 고정) */}
+      <Header baseMonth={baseMonth} onBaseMonthChange={setBaseMonth} />
       <Tabs tabs={tabs} activeTab={activeTab} onChange={setActiveTab} groups={tabGroups} />
 
-      {/* 탭 콘텐츠 - 탭 높이로 스크롤 영역 추가 */}
-      <div className="p-0 pt-16">
+      {/* 탭 콘텐츠 - 헤더(56) + 탭바(~56) 높이만큼 오프셋 */}
+      <div className="p-0 pt-[112px]">
         {/* 경영요약 */}
         {activeTab === 0 && (
           <ExecutiveSummary 
@@ -605,23 +610,62 @@ export default function Home() {
         {/* PL - 손익계산서 */}
         {activeTab === 1 && (
           <div>
-            <div className="sticky top-16 z-30 bg-gray-100 border-b border-gray-300">
+            <div className="sticky top-[112px] z-30 bg-white border-b border-slate-200">
               <div className="flex items-center gap-4 px-6 py-3">
                 <YearTabs years={[2024, 2025, 2026]} activeYear={plYear} onChange={setPlYear} />
-                {(plYear === 2025 || plYear === 2026) && (
-                  <BaseMonthSelector baseMonth={baseMonth} onChange={setBaseMonth} />
-                )}
-                <div className="h-8 w-px bg-gray-400 mx-2"></div>
+                <div className="h-6 w-px bg-slate-300 mx-1"></div>
                 <BrandTabs brands={brands} activeBrand={plBrand} onChange={setPlBrand} />
-                <span className="ml-auto text-sm font-semibold text-slate-700">🟢 Live</span>
+
+                {/* 컨트롤 버튼 (펼치기/월별/YTD) */}
+                <div className="ml-auto flex items-center gap-1.5">
+                  <button
+                    onClick={() => setPlAllRowsCollapsed(!plAllRowsCollapsed)}
+                    className="inline-flex items-center gap-1.5 rounded-md border border-slate-200 bg-white px-2.5 py-1 text-xs font-medium text-slate-600 transition-colors hover:border-slate-300 hover:bg-slate-50"
+                  >
+                    {plAllRowsCollapsed ? '펼치기' : '접기'}
+                    {plAllRowsCollapsed
+                      ? <ChevronDown className="h-3.5 w-3.5 text-slate-400" />
+                      : <ChevronUp className="h-3.5 w-3.5 text-slate-400" />}
+                  </button>
+                  {(plYear === 2025 || plYear === 2026) && (
+                    <button
+                      onClick={() => setPlMonthsCollapsed(!plMonthsCollapsed)}
+                      className="inline-flex items-center gap-1.5 rounded-md border border-slate-200 bg-white px-2.5 py-1 text-xs font-medium text-slate-600 transition-colors hover:border-slate-300 hover:bg-slate-50"
+                    >
+                      {plMonthsCollapsed ? '월별 데이터 펼치기' : '월별 데이터 접기'}
+                      {plMonthsCollapsed
+                        ? <ChevronRight className="h-3.5 w-3.5 text-slate-400" />
+                        : <ChevronLeft className="h-3.5 w-3.5 text-slate-400" />}
+                    </button>
+                  )}
+                  {(plYear === 2025 || plYear === 2026) && (
+                    <button
+                      onClick={() => setHideYtd(!hideYtd)}
+                      className="inline-flex items-center gap-1.5 rounded-md border border-slate-200 bg-white px-2.5 py-1 text-xs font-medium text-slate-600 transition-colors hover:border-slate-300 hover:bg-slate-50"
+                    >
+                      {hideYtd ? 'YTD 보기' : 'YTD 숨기기'}
+                      {hideYtd
+                        ? <Eye className="h-3.5 w-3.5 text-slate-400" />
+                        : <EyeOff className="h-3.5 w-3.5 text-slate-400" />}
+                    </button>
+                  )}
+                </div>
+
+                <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-700 ring-1 ring-emerald-200">
+                  <span className="relative flex h-1.5 w-1.5">
+                    <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75"></span>
+                    <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-emerald-500"></span>
+                  </span>
+                  Live
+                </span>
               </div>
             </div>
             {loading && <div className="p-6 text-center">로딩 중...</div>}
             {error && <div className="p-6 text-center text-red-500">{error}</div>}
             {plData && !loading && (
               <div className="p-6">
-                <FinancialTable 
-                  data={plData} 
+                <FinancialTable
+                  data={plData}
                   columns={monthColumns}
                   showComparisons={plYear === 2025 || plYear === 2026}
                   baseMonth={baseMonth}
@@ -629,6 +673,11 @@ export default function Home() {
                   showBrandBreakdown={plBrand === null}
                   hideYtd={hideYtd}
                   onHideYtdToggle={(plYear === 2025 || plYear === 2026) ? () => setHideYtd(!hideYtd) : undefined}
+                  monthsCollapsed={plMonthsCollapsed}
+                  onMonthsToggle={() => setPlMonthsCollapsed(!plMonthsCollapsed)}
+                  allRowsCollapsed={plAllRowsCollapsed}
+                  onAllRowsToggle={() => setPlAllRowsCollapsed(!plAllRowsCollapsed)}
+                  hideInternalControls={true}
                 />
               </div>
             )}
@@ -638,7 +687,7 @@ export default function Home() {
         {/* BS - ?щТ?곹깭??*/}
         {activeTab === 2 && (
           <div>
-            <div className="bg-gray-100 border-b border-gray-300">
+            <div className="bg-white border-b border-slate-200">
               <div className="flex justify-between items-center gap-4 px-6 py-3">
                 <YearTabs years={[2024, 2025, 2026]} activeYear={bsYear} onChange={setBsYear} />
                 <div className="flex items-center gap-2">
@@ -647,7 +696,7 @@ export default function Home() {
                       <button
                         type="button"
                         onClick={saveRemarksToServer}
-                        className="px-4 py-2 text-sm font-medium rounded-lg bg-blue-600 text-white hover:bg-blue-700 transition-colors shadow-sm"
+                        className="inline-flex items-center gap-1.5 rounded-md border border-blue-200 bg-blue-50 px-3 py-1.5 text-xs font-semibold text-blue-700 transition-colors hover:bg-blue-100"
                       >
                         저장
                       </button>
@@ -658,13 +707,19 @@ export default function Home() {
                             resetRemarksData();
                           }
                         }}
-                        className="px-4 py-2 text-sm font-medium rounded-lg bg-gray-600 text-white hover:bg-gray-700 transition-colors shadow-sm"
+                        className="inline-flex items-center gap-1.5 rounded-md border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 transition-colors hover:bg-slate-50"
                       >
                         초기값으로
                       </button>
                     </>
                   )}
-                  <span className="text-sm font-semibold text-slate-700 ml-2">🟢 Live</span>
+                  <span className="ml-2 inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-700 ring-1 ring-emerald-200">
+                    <span className="relative flex h-1.5 w-1.5">
+                      <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75"></span>
+                      <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-emerald-500"></span>
+                    </span>
+                    Live
+                  </span>
                 </div>
               </div>
             </div>
@@ -707,8 +762,8 @@ export default function Home() {
                 {/* ?댁쟾?먮낯 ??*/}
                 {workingCapitalData && (
                   <div className="px-6 pb-6">
-                    <div className="mb-4 border-t-2 border-gray-400 pt-6">
-                      <h2 className="text-lg font-bold text-gray-800 mb-4">운전자본 분석</h2>
+                    <div className="mb-4 border-t border-slate-200 pt-6">
+                      <h2 className="text-lg font-bold tracking-tight text-slate-800 mb-4">운전자본 분석</h2>
                     </div>
                     <FinancialTable 
                       data={workingCapitalData} 
@@ -749,16 +804,25 @@ export default function Home() {
         {/* CF - ?꾧툑?먮쫫??*/}
         {activeTab === 3 && (
           <div>
-            <div className="bg-gray-100 border-b border-gray-300">
+            <div className="bg-white border-b border-slate-200">
               <div className="flex items-center gap-3 px-6 py-3">
                 <YearTabs years={[2025, 2026]} activeYear={cfYear} onChange={setCfYear} />
                 <button
                   onClick={() => setCfMonthsCollapsed(!cfMonthsCollapsed)}
-                  className="px-4 py-2 text-sm font-medium rounded-lg bg-gray-200 text-gray-700 hover:bg-gray-300 transition-colors shadow-sm"
+                  className="inline-flex items-center gap-1.5 rounded-md border border-slate-200 bg-white px-2.5 py-1 text-xs font-medium text-slate-600 transition-colors hover:border-slate-300 hover:bg-slate-50"
                 >
-                  {cfMonthsCollapsed ? '월별 데이터 펼치기 ▶' : '월별 데이터 접기 ◀'}
+                  {cfMonthsCollapsed ? '월별 데이터 펼치기' : '월별 데이터 접기'}
+                  {cfMonthsCollapsed
+                    ? <ChevronRight className="h-3.5 w-3.5 text-slate-400" />
+                    : <ChevronLeft className="h-3.5 w-3.5 text-slate-400" />}
                 </button>
-                <span className="ml-auto text-sm font-semibold text-slate-700">🟢 Live</span>
+                <span className="ml-auto inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-700 ring-1 ring-emerald-200">
+                  <span className="relative flex h-1.5 w-1.5">
+                    <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75"></span>
+                    <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-emerald-500"></span>
+                  </span>
+                  Live
+                </span>
               </div>
             </div>
             {cfHierarchyLoading && (
@@ -852,9 +916,15 @@ export default function Home() {
         {/* ?ъ떊?ъ슜?꾪솴 */}
         {activeTab === 4 && (
           <div>
-            <div className="bg-gray-100 border-b border-gray-300 px-6 py-3 flex items-center justify-between">
+            <div className="bg-white border-b border-slate-200 px-6 py-3 flex items-center justify-between">
               <span className="text-sm font-medium text-gray-700">2026년 3월 기준</span>
-              <span className="text-sm font-semibold text-slate-700">🟢 Live</span>
+              <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-700 ring-1 ring-emerald-200">
+                <span className="relative flex h-1.5 w-1.5">
+                  <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75"></span>
+                  <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-emerald-500"></span>
+                </span>
+                Live
+              </span>
             </div>
             {loading && <div className="p-6 text-center">로딩 중...</div>}
             {error && <div className="p-6 text-center text-red-500">{error}</div>}

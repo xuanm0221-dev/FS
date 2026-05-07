@@ -10,17 +10,24 @@ const config: Config = {
     extend: {
       colors: {
         navy: {
-          DEFAULT: '#2a5298',
-          light: '#5b7fab',
-          dark: '#2d4a6f',
+          DEFAULT: '#1e3a5f',
+          light: '#2d527f',
+          dark: '#152841',
+        },
+        header: {
+          bg: '#1e3a5f',
+          text: '#ffffff',
         },
         accent: {
           yellow: '#f2c94c',
         },
         highlight: {
-          sky: '#e0f2fe',
-          yellow: '#fffbeb',
-          gray: '#f5f5f5',
+          sky: '#f0f9ff',
+          yellow: '#fefce8',
+          gray: '#f9fafb',
+          mint: '#ecfdf5',
+          orange: '#ffedd5',
+          pink: '#fdf2f8',
         },
       },
     },

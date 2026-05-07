@@ -18,11 +18,11 @@ const SECTION_KEYS: (keyof CFExplanationContent)[] = [
   'managementPoints',
 ];
 
-const SECTION_LABELS: Record<keyof CFExplanationContent, { title: string; border: string; titleClass: string }> = {
-  keyInsights: { title: '핵심 인사이트', border: 'border-blue-500', titleClass: 'text-blue-900' },
-  cashFlow: { title: '', border: 'border-green-500', titleClass: 'text-green-900' },
-  workingCapital: { title: '', border: 'border-purple-500', titleClass: 'text-purple-900' },
-  managementPoints: { title: '관리 포인트', border: 'border-orange-500', titleClass: 'text-orange-900' },
+const SECTION_LABELS: Record<keyof CFExplanationContent, { title: string; cardBg: string; ring: string; titleClass: string }> = {
+  keyInsights: { title: '핵심 인사이트', cardBg: 'bg-blue-50/40', ring: 'ring-blue-100', titleClass: 'text-blue-700' },
+  cashFlow: { title: '', cardBg: 'bg-emerald-50/40', ring: 'ring-emerald-100', titleClass: 'text-emerald-700' },
+  workingCapital: { title: '', cardBg: 'bg-purple-50/40', ring: 'ring-purple-100', titleClass: 'text-purple-700' },
+  managementPoints: { title: '관리 포인트', cardBg: 'bg-orange-50/40', ring: 'ring-orange-100', titleClass: 'text-orange-700' },
 };
 
 export default function CFExplanationPanel({ year = 2026, rollingNumbers, storeKey = 'cf-explanation' }: CFExplanationPanelProps) {
@@ -162,7 +162,7 @@ export default function CFExplanationPanel({ year = 2026, rollingNumbers, storeK
 
   if (loading && !content) {
     return (
-      <div className="bg-white rounded-lg shadow-sm p-6">
+      <div className="bg-white rounded-2xl shadow-sm p-6 ring-1 ring-slate-200">
         <div className="text-gray-500 text-sm">로딩 중...</div>
       </div>
     );
@@ -171,12 +171,12 @@ export default function CFExplanationPanel({ year = 2026, rollingNumbers, storeK
   const display = editMode ? editContent : content;
   if (!display) {
     return (
-      <div className="bg-white rounded-lg shadow-sm p-6">
+      <div className="bg-white rounded-2xl shadow-sm p-6 ring-1 ring-slate-200">
         <div className="text-red-600 text-sm mb-2">{loadError || '내용을 불러올 수 없습니다.'}</div>
         <button
           type="button"
           onClick={loadKvContent}
-          className="px-3 py-1.5 text-sm font-medium rounded-lg bg-gray-100 text-gray-700 hover:bg-gray-200 border border-gray-300"
+          className="inline-flex items-center gap-1.5 rounded-md border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 transition-colors hover:bg-slate-50"
         >
           초기값 불러오기
         </button>
@@ -192,19 +192,17 @@ export default function CFExplanationPanel({ year = 2026, rollingNumbers, storeK
   };
 
   return (
-    <div className="bg-white rounded-lg shadow-sm p-6">
-      <div className="flex justify-between items-center mb-4">
-        <h3 className="text-xl font-bold text-gray-800">설명과 분석</h3>
+    <div className="rounded-2xl bg-white shadow-sm p-6 ring-1 ring-slate-200">
+      <div className="flex justify-between items-center mb-5">
+        <h3 className="bg-gradient-to-r from-slate-900 to-slate-600 bg-clip-text text-xl font-bold tracking-tight text-transparent">설명과 분석</h3>
         {!editMode ? (
-          <div className="flex items-center gap-2 flex-wrap">
+          <div className="flex items-center gap-1.5 flex-wrap">
             <button
               type="button"
               onClick={() => {
                 if (rollingNumbers) {
-                  // Rolling 데이터로 초기값 복원 (KV 해제)
                   setKvContent(null);
                 } else {
-                  // Rolling 데이터 없을 때 서버에서 재생성
                   setLoading(true);
                   fetch(`/api/cf-explanation?refresh=1&key=${storeKey}`)
                     .then((res) => res.json())
@@ -215,7 +213,7 @@ export default function CFExplanationPanel({ year = 2026, rollingNumbers, storeK
                 }
               }}
               disabled={loading}
-              className="px-3 py-1.5 text-sm font-medium rounded-lg bg-gray-100 text-gray-700 hover:bg-gray-200 border border-gray-300 disabled:opacity-50"
+              className="inline-flex items-center gap-1.5 rounded-md border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 transition-colors hover:bg-slate-50 disabled:opacity-50"
               title="Rolling 데이터 기준 자동 생성 내용으로 되돌리기"
             >
               초기값
@@ -224,7 +222,7 @@ export default function CFExplanationPanel({ year = 2026, rollingNumbers, storeK
               type="button"
               onClick={loadKvContent}
               disabled={loading}
-              className="px-3 py-1.5 text-sm font-medium rounded-lg bg-gray-100 text-gray-700 hover:bg-gray-200 border border-gray-300 disabled:opacity-50"
+              className="inline-flex items-center gap-1.5 rounded-md border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 transition-colors hover:bg-slate-50 disabled:opacity-50"
               title="KV에 저장된 내용 불러오기"
             >
               저장된 내용 불러오기
@@ -235,23 +233,23 @@ export default function CFExplanationPanel({ year = 2026, rollingNumbers, storeK
                 placeholder="비밀번호"
                 value={passwordInput}
                 onChange={(e) => setPasswordInput(e.target.value)}
-                className="px-3 py-1.5 border border-gray-300 rounded text-sm w-28"
+                className="px-3 py-1.5 border border-slate-200 rounded-md text-xs w-28"
               />
             )}
             <button
               type="button"
               onClick={handleEdit}
-              className="px-3 py-1.5 text-sm font-medium rounded-lg bg-blue-600 text-white hover:bg-blue-700"
+              className="inline-flex items-center gap-1.5 rounded-md border border-blue-200 bg-blue-50 px-3 py-1.5 text-xs font-semibold text-blue-700 transition-colors hover:bg-blue-100"
             >
               수정
             </button>
           </div>
         ) : (
-          <div className="flex gap-2">
+          <div className="flex gap-1.5">
             <button
               type="button"
               onClick={handleCancel}
-              className="px-3 py-1.5 text-sm font-medium rounded-lg bg-gray-500 text-white hover:bg-gray-600"
+              className="inline-flex items-center gap-1.5 rounded-md border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 transition-colors hover:bg-slate-50"
             >
               취소
             </button>
@@ -259,7 +257,7 @@ export default function CFExplanationPanel({ year = 2026, rollingNumbers, storeK
               type="button"
               onClick={handleSave}
               disabled={saving}
-              className="px-3 py-1.5 text-sm font-medium rounded-lg bg-green-600 text-white hover:bg-green-700 disabled:opacity-50"
+              className="inline-flex items-center gap-1.5 rounded-md border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-xs font-semibold text-emerald-700 transition-colors hover:bg-emerald-100 disabled:opacity-50"
             >
               {saving ? '저장 중...' : '저장'}
             </button>
@@ -270,23 +268,23 @@ export default function CFExplanationPanel({ year = 2026, rollingNumbers, storeK
         <div className="mb-3 text-sm text-red-600">{error}</div>
       )}
 
-      <div className="space-y-6">
+      <div className="space-y-4">
         {SECTION_KEYS.map((key) => {
           const meta = SECTION_LABELS[key];
           const lines = display[key] || [];
           const title = getSectionTitle(key);
           return (
-            <div key={key} className={`border-l-4 pl-4 ${meta.border}`}>
-              <h4 className={`font-bold text-lg mb-3 ${meta.titleClass}`}>{title}</h4>
+            <div key={key} className={`rounded-2xl ${meta.cardBg} ring-1 ${meta.ring} shadow-sm p-5`}>
+              <h4 className={`font-bold text-base mb-3 ${meta.titleClass}`}>{title}</h4>
               {editMode && editContent ? (
                 <textarea
                   value={lines.join('\n')}
                   onChange={(e) => setSectionLines(key, e.target.value.split('\n').map((s) => s.trim()).filter(Boolean))}
-                  className="w-full p-2 border border-gray-300 rounded text-sm leading-relaxed"
+                  className="w-full p-2 border border-slate-200 rounded-md text-sm leading-relaxed bg-white"
                   rows={Math.max(3, lines.length + 1)}
                 />
               ) : (
-                <ul className="space-y-2 text-sm text-gray-700 leading-relaxed">
+                <ul className="space-y-1.5 text-sm text-slate-700 leading-relaxed">
                   {lines.map((line, i) => (
                     <li key={i}>• {line}</li>
                   ))}

@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useMemo } from 'react';
+import { ChevronDown, ChevronRight } from 'lucide-react';
 import { formatNumber } from '@/lib/utils';
 import type { TableRow } from '@/lib/types';
 
@@ -258,7 +259,7 @@ export default function CFWorkingCapitalTable({
   };
 
   const cellClass = (value: number | null) => {
-    const base = 'border border-gray-300 py-2 px-4 text-right';
+    const base = 'border-b border-r border-slate-200 py-2 px-4 text-right';
     if (value == null) return base;
     return value < 0 ? `${base} text-red-600` : base;
   };
@@ -267,47 +268,52 @@ export default function CFWorkingCapitalTable({
 
   return (
     <div className="mt-8">
-      <h3 className="text-base font-semibold text-gray-800 mb-2">운전자본표 (본사 선급금 제외)</h3>
-      <div className="overflow-x-auto border border-gray-300 rounded-lg shadow-sm">
+      <div className="overflow-x-auto border border-slate-200 rounded-2xl shadow-sm">
         <table className="w-full border-collapse text-sm">
           <thead className="bg-navy text-white">
             {monthsCollapsed && hasPlan ? (
               <>
                 <tr>
-                  <th rowSpan={2} className="border border-gray-300 py-3 px-4 text-left sticky left-0 z-20 bg-navy min-w-[200px]">
-                    계정과목
+                  <th rowSpan={2} className="border border-slate-200 py-3 px-4 text-left sticky left-0 z-20 bg-navy min-w-[200px]">
+                    <div className="leading-tight">
+                      <div>운전자본표</div>
+                      <div className="text-xs font-normal text-blue-100">(본사 선급금 제외)</div>
+                    </div>
                   </th>
-                  <th rowSpan={2} className="border border-gray-300 py-3 px-4 text-center min-w-[120px]">2025년(기말)</th>
-                  <th colSpan={2} className="border border-gray-300 py-3 px-4 text-center min-w-[110px] bg-gray-600">전월계획</th>
-                  <th colSpan={4} className="border border-gray-300 py-3 px-4 text-center min-w-[110px]">2026년(예상)</th>
+                  <th rowSpan={2} className="border border-slate-200 py-3 px-4 text-center min-w-[120px]">2025년(기말)</th>
+                  <th colSpan={2} className="border border-slate-200 py-3 px-4 text-center min-w-[110px] bg-slate-500">전월계획</th>
+                  <th colSpan={4} className="border border-slate-200 py-3 px-4 text-center min-w-[110px] bg-navy-light">2026년(예상)</th>
                 </tr>
                 <tr>
-                  <th className="border border-gray-300 py-2 px-4 text-center min-w-[110px] bg-gray-600">연간계획</th>
-                  <th className="border border-gray-300 py-2 px-4 text-center min-w-[110px] bg-gray-600">계획-전년</th>
-                  <th className="border border-gray-300 py-2 px-4 text-center min-w-[110px]">2026년(기말)</th>
-                  <th className="border border-gray-300 py-2 px-4 text-center min-w-[100px]">예상-전년</th>
-                  <th className="border border-gray-300 py-2 px-4 text-center min-w-[110px]">계획 대비</th>
-                  <th className="border border-gray-300 py-2 px-4 text-center min-w-[90px]">계획 대비%</th>
+                  <th className="border border-slate-200 py-2 px-4 text-center min-w-[110px] bg-slate-500">연간계획</th>
+                  <th className="border border-slate-200 py-2 px-4 text-center min-w-[110px] bg-slate-500">계획-전년</th>
+                  <th className="border border-slate-200 py-2 px-4 text-center min-w-[110px] bg-navy-light">2026년(기말)</th>
+                  <th className="border border-slate-200 py-2 px-4 text-center min-w-[100px] bg-navy-light">예상-전년</th>
+                  <th className="border border-slate-200 py-2 px-4 text-center min-w-[110px] bg-navy-light">계획 대비</th>
+                  <th className="border border-slate-200 py-2 px-4 text-center min-w-[90px] bg-navy-light">계획 대비%</th>
                 </tr>
               </>
             ) : (
               <tr>
-                <th className="border border-gray-300 py-3 px-4 text-left sticky left-0 z-20 bg-navy min-w-[200px]">
-                  계정과목
+                <th className="border border-slate-200 py-3 px-4 text-left sticky left-0 z-20 bg-navy min-w-[200px]">
+                  <div className="leading-tight">
+                    <div>운전자본표</div>
+                    <div className="text-xs font-normal text-blue-100">(본사 선급금 제외)</div>
+                  </div>
                 </th>
                 {monthsCollapsed ? (
                   <>
-                    <th className="border border-gray-300 py-3 px-4 text-center min-w-[120px]">
+                    <th className="border border-slate-200 py-3 px-4 text-center min-w-[120px]">
                       {columnLabels[0]}
                     </th>
-                    <th className="border border-gray-300 py-3 px-4 text-center min-w-[120px]">
+                    <th className="border border-slate-200 py-3 px-4 text-center min-w-[120px]">
                       {columnLabels[13]}
                     </th>
-                    <th className="border border-gray-300 py-3 px-4 text-center min-w-[100px]">{columnLabels[14]}</th>
+                    <th className="border border-slate-200 py-3 px-4 text-center min-w-[100px]">{columnLabels[14]}</th>
                   </>
                 ) : (
                   columnLabels.map((col, i) => (
-                    <th key={i} className="border border-gray-300 py-3 px-4 text-center min-w-[100px]">
+                    <th key={i} className="border border-slate-200 py-3 px-4 text-center min-w-[100px]">
                       {col}
                     </th>
                   ))
@@ -321,12 +327,31 @@ export default function CFWorkingCapitalTable({
               const isLevel1 = is합계 || (row.level === 1 && !row.isChild);
               const is전월대비 = row.account === '_전월대비';
               const indentPx = row.isChild ? 36 : 12;
-              const rowBg = is합계 ? 'bg-yellow-50 font-semibold' : isLevel1 ? 'bg-sky-100 font-semibold' : is전월대비 ? 'bg-gray-100' : row.isChild ? 'bg-white' : '';
+              // 계정별 배경색 (외상매출금=sky, 재고자산=pink, 외상매입금=mint)
+              const majorBg =
+                row.account === '외상매출금' ? 'bg-highlight-sky'
+                : row.account === '재고자산' ? 'bg-highlight-pink'
+                : row.account === '외상매입금' ? 'bg-highlight-mint'
+                : 'bg-sky-100';
+              const rowBg = is합계
+                ? 'bg-highlight-yellow font-semibold'
+                : isLevel1
+                  ? `${majorBg} font-semibold`
+                  : is전월대비
+                    ? 'bg-white'
+                    : row.isChild ? 'bg-white' : '';
+              const cellBg = is합계
+                ? 'bg-highlight-yellow'
+                : isLevel1
+                  ? majorBg
+                  : is전월대비
+                    ? 'bg-white'
+                    : 'bg-white';
 
               return (
                 <tr key={ri} className={rowBg}>
                   <td
-                    className={`border border-gray-300 py-2 px-4 sticky left-0 z-10 ${is합계 ? 'bg-yellow-50' : isLevel1 ? 'bg-sky-100' : is전월대비 ? 'bg-gray-100' : 'bg-white'}`}
+                    className={`border-b border-r border-slate-200 py-2 px-4 sticky left-0 z-10 ${cellBg}`}
                     style={{ paddingLeft: `${indentPx}px` }}
                   >
                     {row.isGroup ? (
@@ -335,9 +360,11 @@ export default function CFWorkingCapitalTable({
                         <button
                           type="button"
                           onClick={() => toggle(row.account)}
-                          className="text-gray-600 hover:text-gray-900 p-0.5 leading-none"
+                          className="inline-flex items-center text-slate-400 hover:text-slate-700 p-0.5 leading-none"
                         >
-                          {collapsed.has(row.account) ? '▶' : '▼'}
+                          {collapsed.has(row.account)
+                            ? <ChevronRight className="h-3.5 w-3.5" strokeWidth={2.5} />
+                            : <ChevronDown className="h-3.5 w-3.5" strokeWidth={2.5} />}
                         </button>
                       </div>
                     ) : (

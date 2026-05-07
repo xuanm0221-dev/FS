@@ -1,5 +1,6 @@
 'use client';
 import { useEffect, useState } from 'react';
+import { BarChart3 } from 'lucide-react';
 import { ExecutiveSummaryData } from '@/lib/types';
 
 interface ExecutiveSummaryProps {
@@ -146,17 +147,41 @@ export default function ExecutiveSummary({ data, loadError, onChange, onReset, o
     <div className="p-6">
       {/* 제목 + 버튼 (우측 상단 고정) */}
       <div className="flex justify-between items-center mb-6">
-        <h1 className="text-2xl font-bold text-gray-800">{data.title}</h1>
-        <div className="flex gap-2">
+        <div className="flex items-center gap-3">
+          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-blue-500 to-indigo-600 shadow-md ring-1 ring-white/40">
+            <BarChart3 className="h-5 w-5 text-white" strokeWidth={2.5} />
+          </div>
+          {(() => {
+            const m = data.title.match(/^(.*?)\s*\((.+)\)\s*$/);
+            if (m) {
+              return (
+                <div className="flex items-center gap-2">
+                  <h1 className="bg-gradient-to-r from-slate-900 to-slate-600 bg-clip-text text-2xl font-bold tracking-tight text-transparent">
+                    {m[1]}
+                  </h1>
+                  <span className="rounded-full bg-slate-100 px-2.5 py-0.5 text-xs font-medium text-slate-600 ring-1 ring-slate-200">
+                    {m[2]}
+                  </span>
+                </div>
+              );
+            }
+            return (
+              <h1 className="bg-gradient-to-r from-slate-900 to-slate-600 bg-clip-text text-2xl font-bold tracking-tight text-transparent">
+                {data.title}
+              </h1>
+            );
+          })()}
+        </div>
+        <div className="flex gap-1.5">
           <button
             onClick={handleSave}
-            className="px-4 py-2 text-sm font-medium rounded-lg bg-blue-600 text-white hover:bg-blue-700 transition-colors shadow-sm"
+            className="inline-flex items-center gap-1.5 rounded-md border border-blue-200 bg-blue-50 px-3 py-1.5 text-xs font-semibold text-blue-700 transition-colors hover:bg-blue-100"
           >
             💾 저장하기
           </button>
           <button
             onClick={onReset}
-            className="px-4 py-2 text-sm font-medium rounded-lg bg-gray-600 text-white hover:bg-gray-700 transition-colors shadow-sm"
+            className="inline-flex items-center gap-1.5 rounded-md border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 transition-colors hover:bg-slate-50"
           >
             🔄 초기값으로
           </button>
@@ -164,7 +189,7 @@ export default function ExecutiveSummary({ data, loadError, onChange, onReset, o
             <button
               type="button"
               onClick={() => setEditMode(true)}
-              className="px-4 py-2 text-sm font-medium rounded-lg bg-gray-100 text-gray-700 hover:bg-gray-200 border border-gray-300"
+              className="inline-flex items-center gap-1.5 rounded-md border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 transition-colors hover:bg-slate-50"
             >
               수정
             </button>
@@ -173,14 +198,14 @@ export default function ExecutiveSummary({ data, loadError, onChange, onReset, o
               <button
                 type="button"
                 onClick={() => setEditMode(false)}
-                className="px-4 py-2 text-sm font-medium rounded-lg bg-gray-500 text-white hover:bg-gray-600"
+                className="inline-flex items-center gap-1.5 rounded-md border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 transition-colors hover:bg-slate-50"
               >
                 취소
               </button>
               <button
                 type="button"
                 onClick={handleSaveAndClose}
-                className="px-4 py-2 text-sm font-medium rounded-lg bg-green-600 text-white hover:bg-green-700"
+                className="inline-flex items-center gap-1.5 rounded-md border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-xs font-semibold text-emerald-700 transition-colors hover:bg-emerald-100"
               >
                 저장
               </button>
@@ -194,29 +219,29 @@ export default function ExecutiveSummary({ data, loadError, onChange, onReset, o
         {/* 좌측 컬럼 */}
         <div className="space-y-6">
           {/* 수익성 분석 */}
-          <div className="bg-white rounded-lg border border-gray-200 shadow-sm p-5">
-            <h2 className="text-lg font-bold mb-4 flex items-center gap-2 text-blue-800">
+          <div className="rounded-2xl bg-blue-50/40 ring-1 ring-blue-100 shadow-sm p-5">
+            <h2 className="text-lg font-bold mb-4 flex items-center gap-2 text-blue-700">
               📊 수익성 분석
             </h2>
             {!editMode ? (
-              <>
-                <div className="border-l-4 border-blue-500 pl-4 mb-4">
-                  <h4 className="font-bold text-base mb-2 text-blue-900">매출 성장 vs 수익성 약세</h4>
-                  <ul className="space-y-2 text-sm text-gray-700 leading-relaxed">
+              <div className="space-y-3">
+                <div className="rounded-lg bg-white border-l-4 border-blue-400 p-3 shadow-sm">
+                  <h4 className="font-bold text-sm mb-1.5 text-blue-900">매출 성장 vs 수익성 약세</h4>
+                  <ul className="space-y-1.5 text-sm text-slate-700 leading-relaxed">
                     {data.sections.수익성분석.매출성장.map((line, i) => (
                       <li key={i}>• {bulletLine(line)}</li>
                     ))}
                   </ul>
                 </div>
-                <div className="border-l-4 border-blue-500 pl-4">
-                  <h4 className="font-bold text-base mb-2 text-blue-900">비용 증가</h4>
-                  <ul className="space-y-2 text-sm text-gray-700 leading-relaxed">
+                <div className="rounded-lg bg-white border-l-4 border-blue-400 p-3 shadow-sm">
+                  <h4 className="font-bold text-sm mb-1.5 text-blue-900">비용 증가</h4>
+                  <ul className="space-y-1.5 text-sm text-slate-700 leading-relaxed">
                     {data.sections.수익성분석.비용증가.map((line, i) => (
                       <li key={i}>• {bulletLine(line)}</li>
                     ))}
                   </ul>
                 </div>
-              </>
+              </div>
             ) : (
               <>
                 <div className="mb-4">
@@ -242,41 +267,41 @@ export default function ExecutiveSummary({ data, loadError, onChange, onReset, o
           </div>
 
           {/* 재무 현황 */}
-          <div className="bg-white rounded-lg border border-gray-200 shadow-sm p-5">
-            <h2 className="text-lg font-bold mb-4 flex items-center gap-2 text-orange-800">
+          <div className="rounded-2xl bg-orange-50/40 ring-1 ring-orange-100 shadow-sm p-5">
+            <h2 className="text-lg font-bold mb-4 flex items-center gap-2 text-orange-700">
               🔥 재무 현황
             </h2>
             {!editMode ? (
-              <div className="space-y-4">
-                <div className="border-l-4 border-orange-500 pl-4">
-                  <h4 className="font-bold text-base mb-2 text-orange-900">자산 규모</h4>
-                  <ul className="space-y-2 text-sm text-gray-700 leading-relaxed">
+              <div className="space-y-3">
+                <div className="rounded-lg bg-white border-l-4 border-orange-400 p-3 shadow-sm">
+                  <h4 className="font-bold text-sm mb-1.5 text-orange-900">자산 규모</h4>
+                  <ul className="space-y-1.5 text-sm text-slate-700 leading-relaxed">
                     {data.sections.재무현황.자산규모.map((line, i) => (
                       <li key={i}>• {bulletLine(line)}</li>
                     ))}
                   </ul>
                 </div>
-                <div className="border-l-4 border-orange-500 pl-4">
-                  <h4 className="font-bold text-base mb-2 text-orange-900">
+                <div className="rounded-lg bg-white border-l-4 border-orange-400 p-3 shadow-sm">
+                  <h4 className="font-bold text-sm mb-1.5 text-orange-900">
                     {data.sections.재무현황.부채증가[0]?.includes('△') ? '부채 감소' : '부채 증가'}
                   </h4>
-                  <ul className="space-y-2 text-sm text-gray-700 leading-relaxed">
+                  <ul className="space-y-1.5 text-sm text-slate-700 leading-relaxed">
                     {data.sections.재무현황.부채증가.map((line, i) => (
                       <li key={i}>• {bulletLine(line)}</li>
                     ))}
                   </ul>
                 </div>
-                <div className="border-l-4 border-orange-500 pl-4">
-                  <h4 className="font-bold text-base mb-2 text-orange-900">재고자산</h4>
-                  <ul className="space-y-2 text-sm text-gray-700 leading-relaxed">
+                <div className="rounded-lg bg-white border-l-4 border-orange-400 p-3 shadow-sm">
+                  <h4 className="font-bold text-sm mb-1.5 text-orange-900">재고자산</h4>
+                  <ul className="space-y-1.5 text-sm text-slate-700 leading-relaxed">
                     {data.sections.재무현황.재고자산.map((line, i) => (
                       <li key={i}>• {bulletLine(line)}</li>
                     ))}
                   </ul>
                 </div>
-                <div className="border-l-4 border-orange-500 pl-4">
-                  <h4 className="font-bold text-base mb-2 text-orange-900">자본 안정</h4>
-                  <ul className="space-y-2 text-sm text-gray-700 leading-relaxed">
+                <div className="rounded-lg bg-white border-l-4 border-orange-400 p-3 shadow-sm">
+                  <h4 className="font-bold text-sm mb-1.5 text-orange-900">자본 안정</h4>
+                  <ul className="space-y-1.5 text-sm text-slate-700 leading-relaxed">
                     {data.sections.재무현황.자본안정.map((line, i) => (
                       <li key={i}>• {bulletLine(line)}</li>
                     ))}
@@ -328,23 +353,23 @@ export default function ExecutiveSummary({ data, loadError, onChange, onReset, o
           </div>
 
           {/* 실적 분석 */}
-          <div className="bg-white rounded-lg border border-gray-200 shadow-sm p-5">
-            <h2 className="text-lg font-bold mb-4 flex items-center gap-2 text-green-800">
+          <div className="rounded-2xl bg-emerald-50/40 ring-1 ring-emerald-100 shadow-sm p-5">
+            <h2 className="text-lg font-bold mb-4 flex items-center gap-2 text-emerald-700">
               🔍 실적 분석
             </h2>
             {!editMode ? (
-              <div className="space-y-4">
-                <div className="border-l-4 border-green-500 pl-4">
-                  <h4 className="font-bold text-base mb-2 text-green-900">주요 지표</h4>
-                  <ul className="space-y-2 text-sm text-gray-700 leading-relaxed">
+              <div className="space-y-3">
+                <div className="rounded-lg bg-white border-l-4 border-emerald-400 p-3 shadow-sm">
+                  <h4 className="font-bold text-sm mb-1.5 text-emerald-900">주요 지표</h4>
+                  <ul className="space-y-1.5 text-sm text-slate-700 leading-relaxed">
                     {data.sections.실적분석.주요지표.map((line, i) => (
                       <li key={i}>• {bulletLine(line)}</li>
                     ))}
                   </ul>
                 </div>
-                <div className="border-l-4 border-green-500 pl-4">
-                  <h4 className="font-bold text-base mb-2 text-green-900">부채비율</h4>
-                  <ul className="space-y-2 text-sm text-gray-700 leading-relaxed">
+                <div className="rounded-lg bg-white border-l-4 border-emerald-400 p-3 shadow-sm">
+                  <h4 className="font-bold text-sm mb-1.5 text-emerald-900">부채비율</h4>
+                  <ul className="space-y-1.5 text-sm text-slate-700 leading-relaxed">
                     {data.sections.실적분석.부채비율.map((line, i) => (
                       <li key={i}>• {bulletLine(line)}</li>
                     ))}
@@ -379,13 +404,13 @@ export default function ExecutiveSummary({ data, loadError, onChange, onReset, o
         {/* 우측 컬럼 */}
         <div className="space-y-6">
           {/* 주요 성과 */}
-          <div className="bg-white rounded-lg border border-gray-200 shadow-sm p-5">
-            <h2 className="text-lg font-bold mb-4 flex items-center gap-2 text-indigo-800">
+          <div className="rounded-2xl bg-indigo-50/40 ring-1 ring-indigo-100 shadow-sm p-5">
+            <h2 className="text-lg font-bold mb-4 flex items-center gap-2 text-indigo-700">
               🏆 주요 성과
             </h2>
             {!editMode ? (
-              <div className="border-l-4 border-indigo-500 pl-4">
-                <ul className="space-y-2 text-sm text-gray-700 leading-relaxed">
+              <div className="rounded-lg bg-white border-l-4 border-indigo-400 p-3 shadow-sm">
+                <ul className="space-y-1.5 text-sm text-slate-700 leading-relaxed">
                   {주요성과.map((line, i) => (
                     <li key={i}>• {bulletLine(line)}</li>
                   ))}
@@ -401,13 +426,13 @@ export default function ExecutiveSummary({ data, loadError, onChange, onReset, o
             )}
           </div>
           {/* 핵심 분석 */}
-          <div className="bg-white rounded-lg border border-gray-200 shadow-sm p-5">
-            <h2 className="text-lg font-bold mb-4 flex items-center gap-2 text-sky-800">
+          <div className="rounded-2xl bg-sky-50/40 ring-1 ring-sky-100 shadow-sm p-5">
+            <h2 className="text-lg font-bold mb-4 flex items-center gap-2 text-sky-700">
               📋 핵심 분석
             </h2>
             {!editMode ? (
-              <div className="border-l-4 border-sky-500 pl-4">
-                <ul className="space-y-2 text-sm text-gray-700 leading-relaxed">
+              <div className="rounded-lg bg-white border-l-4 border-sky-400 p-3 shadow-sm">
+                <ul className="space-y-1.5 text-sm text-slate-700 leading-relaxed">
                   {핵심분석.map((line, i) => (
                     <li key={i}>• {bulletLine(line)}</li>
                   ))}
@@ -423,13 +448,13 @@ export default function ExecutiveSummary({ data, loadError, onChange, onReset, o
             )}
           </div>
           {/* 핵심 인사이트 */}
-          <div className="bg-white rounded-lg border border-gray-200 shadow-sm p-5">
-            <h2 className="text-lg font-bold mb-4 flex items-center gap-2 text-emerald-800">
+          <div className="rounded-2xl bg-teal-50/40 ring-1 ring-teal-100 shadow-sm p-5">
+            <h2 className="text-lg font-bold mb-4 flex items-center gap-2 text-teal-700">
               💡 핵심 인사이트
             </h2>
             {!editMode ? (
-              <div className="border-l-4 border-emerald-500 pl-4">
-                <ul className="space-y-2 text-sm text-gray-700 leading-relaxed">
+              <div className="rounded-lg bg-white border-l-4 border-teal-400 p-3 shadow-sm">
+                <ul className="space-y-1.5 text-sm text-slate-700 leading-relaxed">
                   {핵심인사이트.map((line, i) => (
                     <li key={i}>• {bulletLine(line)}</li>
                   ))}
@@ -445,13 +470,13 @@ export default function ExecutiveSummary({ data, loadError, onChange, onReset, o
             )}
           </div>
           {/* 핵심 이슈 및 권고사항 */}
-          <div className="bg-white rounded-lg border border-gray-200 shadow-sm p-5">
-            <h2 className="text-lg font-bold mb-4 flex items-center gap-2 text-amber-800">
+          <div className="rounded-2xl bg-amber-50/40 ring-1 ring-amber-100 shadow-sm p-5">
+            <h2 className="text-lg font-bold mb-4 flex items-center gap-2 text-amber-700">
               ⚠️ 핵심 이슈 및 권고사항
             </h2>
             {!editMode ? (
-              <div className="border-l-4 border-amber-500 pl-4">
-                <ul className="space-y-2 text-sm text-gray-700 leading-relaxed">
+              <div className="rounded-lg bg-white border-l-4 border-amber-400 p-3 shadow-sm">
+                <ul className="space-y-1.5 text-sm text-slate-700 leading-relaxed">
                   {핵심이슈권고사항.map((line, i) => (
                     <li key={i}>• {bulletLine(line)}</li>
                   ))}
@@ -467,12 +492,12 @@ export default function ExecutiveSummary({ data, loadError, onChange, onReset, o
             )}
           </div>
           {/* 결론 */}
-          <div className="bg-white rounded-lg border border-gray-200 shadow-sm p-5">
-            <h2 className="text-lg font-bold mb-4 flex items-center gap-2 text-slate-800">
+          <div className="rounded-2xl bg-slate-50/60 ring-1 ring-slate-200 shadow-sm p-5">
+            <h2 className="text-lg font-bold mb-4 flex items-center gap-2 text-slate-700">
               ✅ 결론
             </h2>
             {!editMode ? (
-              <div className="border-l-4 border-slate-500 pl-4 space-y-3 text-sm text-gray-700 leading-relaxed">
+              <div className="rounded-lg bg-white border-l-4 border-slate-400 p-3 shadow-sm space-y-2 text-sm text-slate-700 leading-relaxed">
                 {결론.map((line, i) => (
                   <p key={i}>{bulletLine(line)}</p>
                 ))}

@@ -4289,7 +4289,13 @@ export default function InventoryDashboard({ onScenarioRecalc }: InventoryDashbo
                   <span className="mx-2 text-gray-300">|</span>
                   {TXT_OTB_SECTION}
                 </span>
-                <span className="ml-auto text-xs font-semibold text-slate-700">🟢 Live</span>
+                <span className="ml-auto inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-semibold text-emerald-700 ring-1 ring-emerald-200">
+                  <span className="relative flex h-1.5 w-1.5">
+                    <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75"></span>
+                    <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-emerald-500"></span>
+                  </span>
+                  Live
+                </span>
                 <span className="ml-3 text-gray-400 text-xs shrink-0">
                   {annualPlanOpen ? TXT_COLLAPSE : TXT_EXPAND}
                 </span>
@@ -4463,7 +4469,13 @@ export default function InventoryDashboard({ onScenarioRecalc }: InventoryDashbo
                 <span className="text-lg">◫</span>
               </SectionIcon>
               <span className="text-sm font-bold text-slate-900">종속변수 계획값</span>
-              <span className="ml-auto text-xs font-semibold text-slate-700">🟢 Live</span>
+              <span className="ml-auto inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-semibold text-emerald-700 ring-1 ring-emerald-200">
+                  <span className="relative flex h-1.5 w-1.5">
+                    <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75"></span>
+                    <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-emerald-500"></span>
+                  </span>
+                  Live
+                </span>
               <span className="ml-3 text-gray-400 text-xs shrink-0">
                 {dependentPlanOpen ? TXT_COLLAPSE : TXT_EXPAND}
               </span>

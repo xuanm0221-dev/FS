@@ -2179,6 +2179,16 @@ export default function InventoryDashboard({ onScenarioRecalc }: InventoryDashbo
     return Math.max(...plActualAvailableMonths);
   }, [plActualAvailableMonths]);
   const shipmentPlanFromMonth = year === 2026 && plLatestActualMonth < 12 ? plLatestActualMonth + 1 : undefined;
+  // 본사 매입상품용 (F) 시작점: purchase 데이터의 closedThrough 기준 (전처리된 실적 월까지는 실적 유지)
+  const purchasePlanFromMonth = useMemo<number | undefined>(() => {
+    if (year !== 2026) return undefined;
+    const ct = purchaseData?.closedThrough ?? '';
+    if (ct.length < 6 || !ct.startsWith(String(year))) return undefined;
+    const m = Number(ct.slice(4, 6));
+    if (!Number.isInteger(m) || m < 1 || m >= 12) return undefined;
+    return m + 1;
+  }, [year, purchaseData]);
+  const purchaseActualMonth = purchasePlanFromMonth != null ? purchasePlanFromMonth - 1 : plLatestActualMonth;
   const effectiveShipmentDisplayData = useMemo<TableData | null>(() => {
     if (!shipmentData) return null;
     if (
@@ -2361,15 +2371,15 @@ export default function InventoryDashboard({ onScenarioRecalc }: InventoryDashbo
       !purchaseData ||
       !effectiveShipmentDisplayData ||
       year !== 2026 ||
-      shipmentPlanFromMonth == null ||
-      shipmentPlanFromMonth <= 1
+      purchasePlanFromMonth == null ||
+      purchasePlanFromMonth <= 1
     ) {
       return purchaseData?.data as TableData | null;
     }
 
     const annualByKey = purchaseAnnualTotalByRowKey ?? {};
     const shipmentByKey = new Map(effectiveShipmentDisplayData.rows.map((row) => [row.key, row]));
-    const planStartIndex = shipmentPlanFromMonth - 1;
+    const planStartIndex = purchasePlanFromMonth - 1;
 
     const leafRows = purchaseData.data.rows
       .filter((row) => row.isLeaf)
@@ -2457,10 +2467,10 @@ export default function InventoryDashboard({ onScenarioRecalc }: InventoryDashbo
         ...accLeafRows,
       ],
     };
-  }, [year, purchaseData, effectiveShipmentDisplayData, shipmentPlanFromMonth, purchaseAnnualTotalByRowKey]);
+  }, [year, purchaseData, effectiveShipmentDisplayData, purchasePlanFromMonth, purchaseAnnualTotalByRowKey]);
   // 브랜드별 본사 매입상품 display 데이터 (3개 브랜드 동시 계산)
   const perBrandPurchaseDisplayData = useMemo<Partial<Record<AnnualPlanBrand, TableData>>>(() => {
-    if (year !== 2026 || shipmentPlanFromMonth == null || shipmentPlanFromMonth <= 1) return {};
+    if (year !== 2026 || purchasePlanFromMonth == null || purchasePlanFromMonth <= 1) return {};
     const result: Partial<Record<AnnualPlanBrand, TableData>> = {};
     for (const b of ANNUAL_PLAN_BRANDS) {
       const srcData = purchaseDataByBrand[b];
@@ -2482,7 +2492,7 @@ export default function InventoryDashboard({ onScenarioRecalc }: InventoryDashbo
       annualByKey['매입합계'] = sumLeaf([...SEASON_KEYS as unknown as string[], ...ACC_KEYS as unknown as string[]]);
 
       const shipmentByKey = new Map(shipmentDisplay.rows.map((row) => [row.key, row]));
-      const planStartIndex = shipmentPlanFromMonth - 1;
+      const planStartIndex = purchasePlanFromMonth - 1;
       const leafRows = srcData.data.rows.filter((row) => row.isLeaf).map((row) => {
         const monthly = [...row.monthly];
         const annualTarget = annualByKey[row.key] ?? null;
@@ -2517,7 +2527,7 @@ export default function InventoryDashboard({ onScenarioRecalc }: InventoryDashbo
       result[b] = { rows: [...(grandTotal ? [grandTotal] : []), ...(clothingSubtotal ? [clothingSubtotal] : []), ...clothingLeafRows, ...(accSubtotal ? [accSubtotal] : []), ...accLeafRows] };
     }
     return result;
-  }, [year, shipmentPlanFromMonth, purchaseDataByBrand, purchaseData, brand, perBrandShipmentDisplayData, perBrandTopTable]);
+  }, [year, purchasePlanFromMonth, purchaseDataByBrand, purchaseData, brand, perBrandShipmentDisplayData, perBrandTopTable]);
 
   // 브랜드별 본사 매입 연간합계 및 검증
   const perBrandPurchaseAnnualByKey = useMemo<Partial<Record<AnnualPlanBrand, Record<string, number | null>>>>(() => {
@@ -4844,9 +4854,9 @@ export default function InventoryDashboard({ onScenarioRecalc }: InventoryDashbo
               {purchaseOpen ? '접기' : '펼치기'}
             </span>
           </button>
-          {year === 2026 && shipmentPlanFromMonth != null && (
+          {year === 2026 && purchasePlanFromMonth != null && (
             <div className="mt-1 pl-7 text-xs text-red-600">
-              본사 매입상품은 {plLatestActualMonth}월까지 실적 유지, {shipmentPlanFromMonth}월(F)부터는 남은 연간매입계획(연간합계-{plLatestActualMonth > 1 ? `1~${plLatestActualMonth}월` : '1월'} 실적)을 본사→대리상 출고매출의 {shipmentPlanFromMonth}~12월 행별 비중으로 배분
+              본사 매입상품은 {purchaseActualMonth}월까지 실적 유지, {purchasePlanFromMonth}월(F)부터는 남은 연간매입계획(연간합계-{purchaseActualMonth > 1 ? `1~${purchaseActualMonth}월` : '1월'} 실적)을 본사→대리상 출고매출의 {purchasePlanFromMonth}~12월 행별 비중으로 배분
             </div>
           )}
           {purchaseError && !purchaseOpen && (
@@ -4873,7 +4883,7 @@ export default function InventoryDashboard({ onScenarioRecalc }: InventoryDashbo
                       data={displayData}
                       year={year}
                       showOpening={false}
-                      planFromMonth={year === 2026 ? shipmentPlanFromMonth : undefined}
+                      planFromMonth={year === 2026 ? purchasePlanFromMonth : undefined}
                       annualTotalByRowKey={year === 2026 ? (perBrandPurchaseAnnualByKey[b] ?? undefined) : undefined}
                       validationHeader={year === 2026 ? '검증' : undefined}
                       validationByRowKey={year === 2026 ? (perBrandPurchaseValidationByKey[b] ?? undefined) : undefined}

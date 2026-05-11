@@ -25,7 +25,7 @@ import type { ScenarioInventoryPayload } from '@/components/pl-forecast/plForeca
 import PLCashFlowTab from '@/components/pl-forecast/PLCashFlowTab';
 
 export default function Home() {
-  const [activeTab, setActiveTab] = useState<number>(5);
+  const [activeTab, setActiveTab] = useState<number>(7);
   const [inventoryTabMounted, setInventoryTabMounted] = useState<boolean>(true);
   const [plYear, setPlYear] = useState<number>(2026);
   const [plBrand, setPlBrand] = useState<string | null>(null); // null=踰뺤씤, 'mlb', 'kids' ??

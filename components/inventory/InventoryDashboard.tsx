@@ -850,6 +850,10 @@ export default function InventoryDashboard({ onScenarioRecalc }: InventoryDashbo
   }));
   const [hqAccAmountText, setHqAccAmountText] = useState(emptyHqAccAmountText);
   const [hqAccBudgetSaving, setHqAccBudgetSaving] = useState(false);
+  // 직영 ACC 입고완료 (Snowflake 실시간) — 1월~throughMonth 누적, M 단위
+  const [actualArrivalByBrand, setActualArrivalByBrand] = useState<
+    Record<string, { amountM: number; throughMonth: number } | null>
+  >({});
   const [annualShipmentPlan2026, setAnnualShipmentPlan2026] = useState<AnnualShipmentPlan>(createEmptyAnnualShipmentPlan);
   const [annualShipmentPlanDraft2026, setAnnualShipmentPlanDraft2026] = useState<AnnualShipmentPlan>(createEmptyAnnualShipmentPlan);
   const [annualPlanEditMode, setAnnualPlanEditMode] = useState(false);
@@ -1252,6 +1256,37 @@ export default function InventoryDashboard({ onScenarioRecalc }: InventoryDashbo
     return () => { cancelled = true; };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // 직영 ACC 입고완료 (전처리 JSON 파일) — scripts/refresh_2026_actual_arrival.py 로 갱신
+  useEffect(() => {
+    if (year !== 2026) {
+      setActualArrivalByBrand({});
+      return;
+    }
+    let cancelled = false;
+    const brands: Array<'MLB' | 'MLB KIDS' | 'DISCOVERY'> = ['MLB', 'MLB KIDS', 'DISCOVERY'];
+    Promise.all(
+      brands.map((b) => {
+        const safeBrand = b.replace(' ', '_');
+        return fetch(`/data/inventory/${year}/actual-arrival-${safeBrand}.json`, { cache: 'no-store' })
+          .then((r) => (r.ok ? r.json() : null))
+          .catch(() => null);
+      }),
+    ).then((results) => {
+      if (cancelled) return;
+      const next: Record<string, { amountM: number; throughMonth: number } | null> = {};
+      brands.forEach((b, i) => {
+        const r = results[i] as { cumulativeAmtM?: number; throughMonth?: number } | null;
+        if (r && typeof r.cumulativeAmtM === 'number' && Number.isFinite(r.cumulativeAmtM)) {
+          next[b] = { amountM: r.cumulativeAmtM, throughMonth: r.throughMonth ?? 0 };
+        } else {
+          next[b] = null;
+        }
+      });
+      setActualArrivalByBrand(next);
+    });
+    return () => { cancelled = true; };
+  }, [year]);
 
   // 2026은 snapshot을 우회하므로 성장률 변경 시 리테일 API를 다시 조회한다.
   useEffect(() => {
@@ -3872,9 +3907,13 @@ export default function InventoryDashboard({ onScenarioRecalc }: InventoryDashbo
                       const accDraft = hqAccBudgetDraft[b] ?? DEFAULT_HQ_ACC_BUDGET[b];
                       const accTextRow = hqAccAmountText[b] ?? { arrival: '', order: '' };
                       const accSellInM = Math.round(((hqRows?.find((r) => r.key === 'ACC합계')?.sellInTotal ?? 0) / 1000));
+                      // 입고완료: Snowflake 실시간 값 (M 단위, 소수점 2자리)
+                      const sfArrival = actualArrivalByBrand[b] ?? null;
+                      const sfArrivalAmtM = sfArrival?.amountM ?? 0;
+                      const sfArrivalThroughMonth = sfArrival?.throughMonth ?? 0;
                       const remaining =
                         accSellInM
-                        - parseHqAccMillionField(accTextRow.arrival)
+                        - sfArrivalAmtM
                         - parseHqAccMillionField(accTextRow.order);
 
                       return (
@@ -3985,79 +4024,18 @@ export default function InventoryDashboard({ onScenarioRecalc }: InventoryDashbo
                                         </tr>
                                       );
                                     })}
-                                    {/* 입고완료(월) */}
+                                    {/* 입고완료(월) — 전처리 JSON (scripts/refresh_2026_actual_arrival.py) */}
                                     <tr className="bg-slate-50">
                                       <td className={`${accTdLabel} text-slate-500`}>
-                                        <span className="inline-flex items-center gap-px whitespace-nowrap">
-                                          입고완료(
-                                          <select
-                                            aria-label={`${b} 입고 기준월`}
-                                            className="cursor-pointer appearance-none border-0 bg-transparent p-0 text-xs font-medium text-slate-500 underline decoration-dotted underline-offset-2 outline-none focus:ring-0 [&::-ms-expand]:hidden"
-                                            value={accDraft.arrivalThroughMonth}
-                                            onChange={(e) => {
-                                              const m = Number(e.target.value);
-                                              setHqAccBudgetDraft((prev) => ({
-                                                ...prev,
-                                                [b]: {
-                                                  ...(prev[b] ?? DEFAULT_HQ_ACC_BUDGET[b]),
-                                                  arrivalThroughMonth: Number.isFinite(m)
-                                                    ? Math.min(12, Math.max(1, m))
-                                                    : 8,
-                                                },
-                                              }));
-                                            }}
-                                          >
-                                            {Array.from({ length: 12 }, (_, i) => i + 1).map((mo) => (
-                                              <option key={mo} value={mo}>
-                                                {mo}
-                                              </option>
-                                            ))}
-                                          </select>
-                                          월)
+                                        <span className="whitespace-nowrap">
+                                          입고완료({sfArrivalThroughMonth > 0 ? `${sfArrivalThroughMonth}월` : '--'})
                                         </span>
                                       </td>
                                       <td className={`${accTdAmount} text-slate-600`}>
                                         <span className="inline-flex w-full min-w-0 items-baseline justify-end gap-px">
-                                          <input
-                                            type="text"
-                                            inputMode="decimal"
-                                            autoComplete="off"
-                                            className="min-w-0 flex-1 border-0 bg-transparent p-0 text-right text-xs font-semibold tabular-nums text-slate-600 shadow-none outline-none ring-0 focus:ring-0 focus:outline-none"
-                                            value={accTextRow.arrival}
-                                            onChange={(e) => {
-                                              const stripped = stripHqAccMillionCommas(e.target.value);
-                                              if (!HQ_ACC_MILLION_INPUT_RE.test(stripped)) return;
-                                              setHqAccAmountText((prev) => ({
-                                                ...prev,
-                                                [b]: { ...prev[b], arrival: stripped },
-                                              }));
-                                              const num = parseHqAccMillionField(stripped);
-                                              setHqAccBudgetDraft((prev) => ({
-                                                ...prev,
-                                                [b]: { ...(prev[b] ?? DEFAULT_HQ_ACC_BUDGET[b]), arrival: num },
-                                              }));
-                                            }}
-                                            onFocus={(e) => {
-                                              const stripped = stripHqAccMillionCommas(e.target.value);
-                                              if (stripped !== e.target.value) {
-                                                setHqAccAmountText((prev) => ({
-                                                  ...prev,
-                                                  [b]: { ...prev[b], arrival: stripped },
-                                                }));
-                                              }
-                                            }}
-                                            onBlur={(e) => {
-                                              const num = parseHqAccMillionField(e.target.value);
-                                              setHqAccBudgetDraft((prev) => ({
-                                                ...prev,
-                                                [b]: { ...(prev[b] ?? DEFAULT_HQ_ACC_BUDGET[b]), arrival: num },
-                                              }));
-                                              setHqAccAmountText((prev) => ({
-                                                ...prev,
-                                                [b]: { ...prev[b], arrival: formatHqAccMillionDisplay(num) },
-                                              }));
-                                            }}
-                                          />
+                                          <span className="min-w-0 flex-1 text-right text-xs font-semibold tabular-nums text-slate-600">
+                                            {sfArrival != null ? sfArrivalAmtM.toLocaleString('ko-KR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '-'}
+                                          </span>
                                           <span className="shrink-0 text-slate-500">M</span>
                                         </span>
                                       </td>
@@ -4169,6 +4147,46 @@ export default function InventoryDashboard({ onScenarioRecalc }: InventoryDashbo
                   </div>
                 ))}
                 </div>
+                {/* 입고완료 전처리 SQL·스크립트 범례 */}
+                <details className="mt-3 rounded-md border border-slate-200 bg-slate-50/60 px-3 py-2 text-[10px] text-slate-400">
+                  <summary className="cursor-pointer text-[10px] font-medium text-slate-500 hover:text-slate-700">
+                    🔴 전처리 입고완료 — sap_fnf.dw_cn_ivtr_prdt_m × FNF.PRCS.DB_PRDT (매월 수동 실행)
+                  </summary>
+                  <div className="mt-2 space-y-2">
+                    <div className="font-mono text-[10px]">
+                      <span className="text-slate-500">갱신 명령어: </span>
+                      <code className="select-all font-semibold text-blue-500">python scripts/refresh_2026_actual_arrival.py</code>
+                    </div>
+                    <div className="font-mono text-[10px]">
+                      <span className="text-slate-500">출력 파일: </span>
+                      <code className="text-slate-500">public/data/inventory/2026/actual-arrival-&#123;brand&#125;.json</code>
+                    </div>
+                    <pre className="overflow-x-auto whitespace-pre-wrap font-mono leading-relaxed text-slate-400">
+{`WITH acc_item_map AS (
+  SELECT DISTINCT ITEM, PRDT_KIND_NM_ENG
+  FROM FNF.PRCS.DB_PRDT
+  WHERE PARENT_PRDT_KIND_NM_ENG = 'ACC'
+    AND PRDT_KIND_NM_ENG IN ('Shoes','Headwear','Bag','Acc_etc')
+),
+base AS (
+  SELECT
+    a.yyyymm                 AS YYYYMM,
+    a.stor_amt               AS in_stock_amt
+  FROM sap_fnf.dw_cn_ivtr_prdt_m a
+  JOIN acc_item_map db
+    ON SUBSTR(a.prdt_cd, 7, 2) = db.ITEM
+  WHERE a.brd_cd = '<brdCd>'              -- M=MLB, I=MLB KIDS, X=DISCOVERY
+    AND a.yyyymm BETWEEN 202601 AND 202612
+)
+SELECT YYYYMM, SUM(in_stock_amt) AS ARRIVAL_AMT
+FROM base
+GROUP BY YYYYMM
+ORDER BY YYYYMM;
+
+-- 표시 = 1월~throughMonth 누적 SUM(stor_amt) ÷ 1,000,000 (M, 소수점 2자리)`}
+                    </pre>
+                  </div>
+                </details>
               </div>
             </div>
           );

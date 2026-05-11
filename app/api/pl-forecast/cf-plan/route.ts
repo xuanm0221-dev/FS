@@ -20,7 +20,7 @@ const KEY_MAP: Record<string, string> = {
   '영업활동|비용|광고비': 'operating_expenses_ad',
   '영업활동|비용|온라인 플랫폼비용': 'operating_expenses_platform',
   '영업활동|비용|오프라인 매장비용': 'operating_expenses_store',
-  '영업활동|비용|수입관세': 'operating_expenses_duty',
+  '영업활동|비용|수입증치세': 'operating_expenses_duty',
   '영업활동|비용|인건비': 'operating_expenses_payroll',
   '영업활동|비용|보증금지급': 'operating_expenses_deposit',
   '영업활동|비용|기타': 'operating_expenses_other',

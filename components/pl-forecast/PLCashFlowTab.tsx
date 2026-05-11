@@ -95,7 +95,7 @@ const STATIC_CF_ROWS: StaticCFRow[] = [
   { key: 'operating_expenses_ad', label: '광고비', level: 2, isGroup: false, actual2025: -224166795 },
   { key: 'operating_expenses_platform', label: '온라인 플랫폼비용', level: 2, isGroup: false, actual2025: -274204282 },
   { key: 'operating_expenses_store', label: '오프라인 매장비용', level: 2, isGroup: false, actual2025: -256910016 },
-  { key: 'operating_expenses_duty', label: '수입관세', level: 2, isGroup: false, actual2025: -524699762 },
+  { key: 'operating_expenses_duty', label: '수입증치세', level: 2, isGroup: false, actual2025: -524699762 },
   { key: 'operating_expenses_payroll', label: '인건비', level: 2, isGroup: false, actual2025: -127309323 },
   { key: 'operating_expenses_deposit', label: '보증금지급', level: 2, isGroup: false, actual2025: -5982822 },
   { key: 'operating_expenses_other', label: '기타', level: 2, isGroup: false, actual2025: -200379920 },
@@ -823,7 +823,7 @@ export default function PLCashFlowTab() {
         else if (row.level === 2 && level0 === '영업활동' && level1 === '비용' && row.account === '광고비') key = 'operating_expenses_ad';
         else if (row.level === 2 && level0 === '영업활동' && level1 === '비용' && row.account === '온라인 플랫폼비용') key = 'operating_expenses_platform';
         else if (row.level === 2 && level0 === '영업활동' && level1 === '비용' && row.account === '오프라인 매장비용') key = 'operating_expenses_store';
-        else if (row.level === 2 && level0 === '영업활동' && level1 === '비용' && row.account === '수입관세') key = 'operating_expenses_duty';
+        else if (row.level === 2 && level0 === '영업활동' && level1 === '비용' && row.account === '수입증치세') key = 'operating_expenses_duty';
         else if (row.level === 2 && level0 === '영업활동' && level1 === '비용' && row.account === '인건비') key = 'operating_expenses_payroll';
         else if (row.level === 2 && level0 === '영업활동' && level1 === '비용' && row.account === '보증금지급') key = 'operating_expenses_deposit';
         else if (row.level === 2 && level0 === '영업활동' && level1 === '비용' && row.account === '기타') key = 'operating_expenses_other';

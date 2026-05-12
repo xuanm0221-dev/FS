@@ -154,6 +154,21 @@ const TXT_EXPAND = '▼ 펼치기';
 
 
 
+/**
+ * inventory 데이터 응답의 closedThrough(예: "202604") → 계획(F) 시작월(예: 5)
+ * 1~closedMonth는 전처리된 실적 그대로 표시되고, closedMonth+1 ~ 12월만 계획 공식 적용.
+ * 유효하지 않은 closedThrough면 undefined 반환.
+ */
+function derivePlanFromMonth(
+  closedThrough: string | undefined | null,
+  year: number,
+): number | undefined {
+  if (!closedThrough || closedThrough.length < 6 || !closedThrough.startsWith(String(year))) return undefined;
+  const m = Number(closedThrough.slice(4, 6));
+  if (!Number.isInteger(m) || m < 1 || m >= 12) return undefined;
+  return m + 1;
+}
+
 /** 본사 의류매입 표(annualPlan) → hqSellInPlan 시즌 행 매핑 */
 const DRIVER_COLUMN_HEADERS = ['전년', '계획금액', '계획YOY', 'Rolling금액', 'RollingYOY', '계획대비 증감', '계획대비 증감(%)'] as const;
 const INDEPENDENT_DRIVER_COLUMN_HEADERS = ['Rolling'] as const;
@@ -2213,15 +2228,16 @@ export default function InventoryDashboard({ onScenarioRecalc }: InventoryDashbo
     if (plActualAvailableMonths.length === 0) return 0;
     return Math.max(...plActualAvailableMonths);
   }, [plActualAvailableMonths]);
-  const shipmentPlanFromMonth = year === 2026 && plLatestActualMonth < 12 ? plLatestActualMonth + 1 : undefined;
-  // 본사 매입상품용 (F) 시작점: purchase 데이터의 closedThrough 기준 (전처리된 실적 월까지는 실적 유지)
+  // 각 inventory 섹션의 (F) 시작점은 해당 데이터의 closedThrough 기준 (전처리된 실적 월까지는 무조건 실적 그대로)
+  // 출고매출 → shipmentData.closedThrough
+  const shipmentPlanFromMonth = useMemo<number | undefined>(() => {
+    if (year !== 2026) return undefined;
+    return derivePlanFromMonth(shipmentData?.closedThrough, year);
+  }, [year, shipmentData]);
+  // 본사 매입상품 → purchaseData.closedThrough
   const purchasePlanFromMonth = useMemo<number | undefined>(() => {
     if (year !== 2026) return undefined;
-    const ct = purchaseData?.closedThrough ?? '';
-    if (ct.length < 6 || !ct.startsWith(String(year))) return undefined;
-    const m = Number(ct.slice(4, 6));
-    if (!Number.isInteger(m) || m < 1 || m >= 12) return undefined;
-    return m + 1;
+    return derivePlanFromMonth(purchaseData?.closedThrough, year);
   }, [year, purchaseData]);
   const purchaseActualMonth = purchasePlanFromMonth != null ? purchasePlanFromMonth - 1 : plLatestActualMonth;
   const effectiveShipmentDisplayData = useMemo<TableData | null>(() => {
@@ -3064,8 +3080,9 @@ export default function InventoryDashboard({ onScenarioRecalc }: InventoryDashbo
   }, [year, brand, monthlyData, monthlyPlanFromMonth, effectivePurchaseDisplayData, effectiveShipmentDisplayData, effectiveRetailData, hqTableData]);
 
   // 브랜드별 대리상 월별 재고잔액 display 데이터 (3개 브랜드 동시 계산)
+  // 실적/계획 경계는 monthlyDataByBrand[b].closedThrough 기준 (PL 실적 폴더와 무관)
   const perBrandDealerMonthlyDisplayData = useMemo<Partial<Record<AnnualPlanBrand, TableData>>>(() => {
-    if (year !== 2026 || shipmentPlanFromMonth == null || shipmentPlanFromMonth <= 1) return {};
+    if (year !== 2026) return {};
     const result: Partial<Record<AnnualPlanBrand, TableData>> = {};
     for (const b of ANNUAL_PLAN_BRANDS) {
       const mData = monthlyDataByBrand[b];
@@ -3073,10 +3090,13 @@ export default function InventoryDashboard({ onScenarioRecalc }: InventoryDashbo
       const effRetail = perBrandEffectiveRetailData[b];
       const dealerRows = perBrandTopTable[b]?.dealer.rows;
       if (!mData || !shipDisplay || !effRetail || !dealerRows) continue;
+      // per-brand 실적 마감월 → 그 다음 달부터 계획(F) 계산
+      const bPlanFromMonth = derivePlanFromMonth(mData.closedThrough, year);
+      if (bPlanFromMonth == null || bPlanFromMonth <= 1) continue;
       const shipmentByKey = new Map(shipDisplay.rows.map((row) => [row.key, row]));
       const retailByKey = new Map(effRetail.dealer.rows.map((row) => [row.key, row]));
       const dealerClosingByKey = new Map(dealerRows.map((row) => [row.key, row.closing * 1000]));
-      const planStartIndex = shipmentPlanFromMonth - 1;
+      const planStartIndex = bPlanFromMonth - 1;
       const leafRows = mData.dealer.rows.filter((row) => row.isLeaf).map((row) => {
         const monthly = [...row.monthly];
         let prevClosing = row.opening;
@@ -3125,11 +3145,12 @@ export default function InventoryDashboard({ onScenarioRecalc }: InventoryDashbo
       result[b] = { rows: [...(grandTotal ? [grandTotal] : []), ...(clothingSubtotal ? [clothingSubtotal] : []), ...clothingLeafRows, ...(accSubtotal ? [accSubtotal] : []), ...accLeafRows] };
     }
     return result;
-  }, [year, shipmentPlanFromMonth, monthlyDataByBrand, monthlyData, brand, perBrandShipmentDisplayData, perBrandEffectiveRetailData, perBrandTopTable]);
+  }, [year, monthlyDataByBrand, monthlyData, brand, perBrandShipmentDisplayData, perBrandEffectiveRetailData, perBrandTopTable]);
 
   // 브랜드별 본사 월별 재고잔액 display 데이터 (3개 브랜드 동시 계산)
+  // 실적/계획 경계는 monthlyDataByBrand[b].closedThrough 기준 (PL 실적 폴더와 무관)
   const perBrandHqMonthlyDisplayData = useMemo<Partial<Record<AnnualPlanBrand, TableData>>>(() => {
-    if (year !== 2026 || shipmentPlanFromMonth == null || shipmentPlanFromMonth <= 1) return {};
+    if (year !== 2026) return {};
     const result: Partial<Record<AnnualPlanBrand, TableData>> = {};
     for (const b of ANNUAL_PLAN_BRANDS) {
       const mData = monthlyDataByBrand[b];
@@ -3138,11 +3159,14 @@ export default function InventoryDashboard({ onScenarioRecalc }: InventoryDashbo
       const effRetail = perBrandEffectiveRetailData[b];
       const hqRows = perBrandTopTable[b]?.hq.rows;
       if (!mData || !purchaseDisplay || !shipDisplay || !effRetail || !hqRows) continue;
+      // per-brand 실적 마감월 → 그 다음 달부터 계획(F) 계산
+      const bPlanFromMonth = derivePlanFromMonth(mData.closedThrough, year);
+      if (bPlanFromMonth == null || bPlanFromMonth <= 1) continue;
       const purchaseByKey = new Map(purchaseDisplay.rows.map((row) => [row.key, row]));
       const shipmentByKey = new Map(shipDisplay.rows.map((row) => [row.key, row]));
       const retailByKey = new Map(effRetail.hq.rows.map((row) => [row.key, row]));
       const hqClosingByKey = new Map(hqRows.map((row) => [row.key, row.closing * 1000]));
-      const planStartIndex = shipmentPlanFromMonth - 1;
+      const planStartIndex = bPlanFromMonth - 1;
       const leafRows = mData.hq.rows.filter((row) => row.isLeaf).map((row) => {
         const monthly = [...row.monthly];
         const targetClosing = hqClosingByKey.get(row.key) ?? null;
@@ -3202,7 +3226,7 @@ export default function InventoryDashboard({ onScenarioRecalc }: InventoryDashbo
       result[b] = { rows: [...(grandTotal ? [grandTotal] : []), ...(clothingSubtotal ? [clothingSubtotal] : []), ...clothingLeafRows, ...(accSubtotal ? [accSubtotal] : []), ...accLeafRows] };
     }
     return result;
-  }, [year, shipmentPlanFromMonth, monthlyDataByBrand, monthlyData, brand, perBrandPurchaseDisplayData, perBrandShipmentDisplayData, perBrandEffectiveRetailData, perBrandTopTable]);
+  }, [year, monthlyDataByBrand, monthlyData, brand, perBrandPurchaseDisplayData, perBrandShipmentDisplayData, perBrandEffectiveRetailData, perBrandTopTable]);
 
   useEffect(() => {
     if (typeof window === 'undefined' || year !== 2026) return;
@@ -4639,9 +4663,7 @@ ORDER BY YYYYMM;
                 if (!brandMonthly || brandMonthly.dealer.rows.length === 0) return null;
                 const dealerData = (year === 2026 ? perBrandDealerMonthlyDisplayData[b] : null) ?? (brandMonthly.dealer as TableData);
                 const hqData = (year === 2026 ? perBrandHqMonthlyDisplayData[b] : null) ?? (brandMonthly.hq as TableData);
-                const bClosedThrough = brandMonthly.closedThrough ?? '';
-                const bClosedMonth = bClosedThrough.length >= 6 && bClosedThrough.startsWith(String(year)) ? Number(bClosedThrough.slice(4, 6)) : NaN;
-                const bPlanFromMonth = year === 2026 && Number.isInteger(bClosedMonth) && bClosedMonth >= 1 && bClosedMonth < 12 ? bClosedMonth + 1 : undefined;
+                const bPlanFromMonth = year === 2026 ? derivePlanFromMonth(brandMonthly.closedThrough, year) : undefined;
                 return (
                   <div key={b} className={b === 'MLB' ? '' : 'mt-8'}>
                     <div className="text-sm font-bold text-gray-800 mb-1 pt-1 border-t border-gray-400">{b}</div>
@@ -4795,7 +4817,7 @@ ORDER BY YYYYMM;
           </button>
           {year === 2026 && shipmentPlanFromMonth != null && (
             <div className="mt-1 pl-7 text-xs text-red-600">
-              본사→대리상 출고매출 표만 예외적으로 PL 실적월 이후는 PL 의류 출고진척률 / ACC 출고비율로 월 배분
+              본사→대리상 출고매출: 1~{shipmentPlanFromMonth - 1}월은 전처리 실적값 그대로, {shipmentPlanFromMonth}월부터는 PL 의류 출고진척률 / ACC 출고비율로 월 배분
             </div>
           )}
           {shipmentError && !shipmentOpen && (
